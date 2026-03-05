@@ -1,0 +1,24 @@
+# Go Binary
+./cypher-shell-browser
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Neo4j data (if running locally outside Docker)
+neo4j_data/
+neo4j_logs/
