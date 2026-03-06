@@ -1,3 +1,10 @@
+
+A terminal UI for Neo4j — write Cypher queries and explore results also written in Cypher without leaving your shell.
+
+[![Release](https://github.com/jpadams/cypher-shell-browser/actions/workflows/release.yml/badge.svg)](https://github.com/jpadams/cypher-shell-browser/actions/workflows/release.yml)
+
+![demo](https://github.com/user-attachments/assets/c7a583aa-f0ce-40f3-be47-748becc689d6)
+
 ```
 ╭──────────────────────────────────────────────────────────────╮
 │                                                              │
@@ -12,10 +19,6 @@
 │            Neo4j in your terminal                            │
 ╰──────────────────────────────────────────────────────────────╯
 ```
-
-A terminal UI for Neo4j — write Cypher queries and explore results also written in Cypher without leaving your shell.
-
-[![Release](https://github.com/jpadams/cypher-shell-browser/actions/workflows/release.yml/badge.svg)](https://github.com/jpadams/cypher-shell-browser/actions/workflows/release.yml)
 
 ## Features
 
