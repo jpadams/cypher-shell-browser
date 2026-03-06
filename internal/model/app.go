@@ -315,20 +315,25 @@ func (a App) View() string {
 		)
 
 	case stateQuery:
-		result := ""
+		var topParts []string
+		topParts = append(topParts, a.query.View())
 		if a.hasResult {
 			if a.graph.HasGraph() {
-				result = a.graph.View()
+				topParts = append(topParts, a.graph.View())
 			} else {
-				result = a.table.View()
+				topParts = append(topParts, a.table.View())
 			}
 		}
-
-		return lipgloss.JoinVertical(lipgloss.Left,
-			a.query.View(),
-			result,
-			a.statusbar.View(),
-		)
+		topContent := lipgloss.JoinVertical(lipgloss.Left, topParts...)
+		fillerH := a.height - lipgloss.Height(topContent) - 1
+		if fillerH > 0 {
+			return lipgloss.JoinVertical(lipgloss.Left,
+				topContent,
+				strings.Repeat("\n", fillerH-1),
+				a.statusbar.View(),
+			)
+		}
+		return lipgloss.JoinVertical(lipgloss.Left, topContent, a.statusbar.View())
 	}
 
 	return ""
