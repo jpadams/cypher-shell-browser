@@ -3,7 +3,8 @@ A terminal UI for Neo4j — write Cypher queries and explore results also writte
 
 [![Release](https://github.com/jpadams/cypher-shell-browser/actions/workflows/release.yml/badge.svg)](https://github.com/jpadams/cypher-shell-browser/actions/workflows/release.yml)
 
-![demo](https://github.com/user-attachments/assets/c7a583aa-f0ce-40f3-be47-748becc689d6)
+![demo-new](https://github.com/user-attachments/assets/46e54934-9988-4f81-b53f-3a9734c75e5b)
+
 
 ```
 ╭──────────────────────────────────────────────────────────────╮
