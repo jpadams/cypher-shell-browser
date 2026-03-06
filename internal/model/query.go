@@ -302,9 +302,11 @@ func (m *QueryModel) setCursorToBytePos(pos int) {
 			targetCol++
 		}
 	}
-	// Navigate to the target line first, then set column
-	m.textarea.SetCursor(0)
-	m.textarea.CursorStart()
+	// SetValue may leave the cursor anywhere (e.g. at the end); normalize to
+	// line 0 first, then descend to the target line.
+	for i := m.textarea.Line(); i > 0; i-- {
+		m.textarea.CursorUp()
+	}
 	for i := 0; i < targetLine; i++ {
 		m.textarea.CursorDown()
 	}
