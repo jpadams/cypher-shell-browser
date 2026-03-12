@@ -106,7 +106,7 @@ func (m QueryModel) Update(msg tea.Msg) (QueryModel, tea.Cmd) {
 		// When autocomplete popup is visible, intercept certain keys
 		if m.autocomplete.Visible() {
 			switch msg.String() {
-			case "tab":
+			case "tab", "enter":
 				full, start, end := m.autocomplete.Accept()
 				if full != "" {
 					// Replace the entire word (before and after cursor) with the completion
