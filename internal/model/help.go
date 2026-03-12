@@ -60,7 +60,7 @@ func (m HelpModel) View() string {
 		helpLine("Ctrl+L", "Clear / new query"),
 
 		helpSectionStyle.Render("Query Input"),
-		helpLine("Ctrl+E", "Execute query"),
+		helpLine("Ctrl+R", "Run query"),
 		helpLine("Ctrl+Y", "Copy query to clipboard"),
 		helpLine("↑/↓", "Browse query history"),
 		helpLine("Tab", "Accept autocomplete suggestion"),

@@ -244,7 +244,7 @@ func (a *App) resultHints() []StatusHint {
 
 func queryInputHints(hasResults bool) []StatusHint {
 	hints := []StatusHint{
-		{Key: "Ctrl+E", Desc: "execute", Active: true},
+		{Key: "Ctrl+R", Desc: "run query", Active: true},
 	}
 	if hasResults {
 		hints = append(hints, StatusHint{Key: "Esc", Desc: "results", Active: true})
@@ -273,7 +273,7 @@ func (a App) updateQueryState(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.graph.ResetPrefix()
 			a.statusbar.SetHints(queryInputHints(a.hasResult))
 			return a, a.query.Focus()
-		case "ctrl+e":
+		case "ctrl+r":
 			if a.queryFocus {
 				a.statusbar.SetLoading(true)
 			}

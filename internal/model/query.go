@@ -54,7 +54,7 @@ type queryCopiedMsg struct{}
 
 func NewQueryModel(client *n4j.Client) QueryModel {
 	ta := textarea.New()
-	ta.Placeholder = "Enter Cypher query... (Ctrl+E to execute)"
+	ta.Placeholder = "Enter Cypher query... (Ctrl+R to run)"
 	ta.Focus()
 	ta.SetHeight(3)
 	ta.ShowLineNumbers = false
@@ -138,7 +138,7 @@ func (m QueryModel) Update(msg tea.Msg) (QueryModel, tea.Cmd) {
 				copyToClipboard(query)
 			}
 			return m, func() tea.Msg { return queryCopiedMsg{} }
-		case "ctrl+e":
+		case "ctrl+r":
 			query := m.textarea.Value()
 			if query == "" {
 				return m, nil
@@ -146,7 +146,7 @@ func (m QueryModel) Update(msg tea.Msg) (QueryModel, tea.Cmd) {
 			m.pendingQuery = query
 			m.browsing = false
 			m.autocomplete.Hide()
-			return m, m.executeQuery(query)
+			return m, m.runQuery(query)
 		case "ctrl+l":
 			m.textarea.Reset()
 			m.histIdx = len(m.history)
@@ -343,7 +343,7 @@ func (m *QueryModel) DiscardPending() {
 	m.pendingQuery = ""
 }
 
-func (m QueryModel) executeQuery(cypher string) tea.Cmd {
+func (m QueryModel) runQuery(cypher string) tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		result, err := client.Run(context.Background(), cypher, nil)

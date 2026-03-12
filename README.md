@@ -24,7 +24,7 @@ A terminal UI for Neo4j — write Cypher queries and explore results also writte
 ## Features
 
 - Connect to any Neo4j instance (local or remote) with bolt/neo4j URI schemes
-- Write and execute Cypher queries with syntax highlighting and autocomplete
+- Write and run Cypher queries with syntax highlighting and autocomplete
 - True Cypher output with hotkey for MERGE/CREATE for subgraph portability
 - Navigate nodes and relationships with the keyboard
 - Query history persisted across sessions
