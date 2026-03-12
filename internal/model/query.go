@@ -103,6 +103,15 @@ func (m QueryModel) Value() string {
 func (m QueryModel) Update(msg tea.Msg) (QueryModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+a":
+			m.textarea.CursorStart()
+			return m, nil
+		case "ctrl+e":
+			m.textarea.CursorEnd()
+			return m, nil
+		}
+
 		// When autocomplete popup is visible, intercept certain keys
 		if m.autocomplete.Visible() {
 			switch msg.String() {
