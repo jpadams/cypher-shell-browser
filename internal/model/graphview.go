@@ -53,6 +53,14 @@ var (
 	graphDetailDimStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245"))
 
+	graphDetailInternalKeyStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("243")).
+					Italic(true)
+
+	graphDetailInternalValStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.Color("243")).
+					Italic(true)
+
 	cypherPrefixStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("226"))
@@ -60,9 +68,10 @@ var (
 
 // graphDetailEntry is a single navigable item in the detail panel.
 type graphDetailEntry struct {
-	isHeader bool
-	label    string
-	value    string
+	isHeader   bool
+	isInternal bool // true for <id> / <elementId> metadata fields
+	label      string
+	value      string
 }
 
 type GraphViewModel struct {
@@ -92,6 +101,7 @@ type GraphViewModel struct {
 	propCursor   int
 	expandedProp int
 	detailScroll int
+	showInternal bool // whether to show <id>/<elementId> internal fields
 }
 
 func NewGraphViewModel() GraphViewModel {
@@ -124,6 +134,7 @@ func (m *GraphViewModel) SetResult(result *n4j.QueryResult) {
 	m.propCursor = -1
 	m.expandedProp = -1
 	m.detailScroll = 0
+	m.showInternal = false
 	if m.ready {
 		m.renderContent()
 		m.updateDetail()
@@ -343,6 +354,13 @@ func (m GraphViewModel) Update(msg tea.Msg) (GraphViewModel, tea.Cmd) {
 			}
 			return m, nil
 
+		case "v":
+			if m.showDetail {
+				m.showInternal = !m.showInternal
+				m.updateDetail()
+			}
+			return m, nil
+
 		case "enter":
 			if !m.detailFocus && m.showDetail {
 				m.detailFocus = true
@@ -535,9 +553,17 @@ func (m *GraphViewModel) updateDetail() {
 				label = "Node"
 			}
 			m.entries = append(m.entries, graphDetailEntry{isHeader: true, label: "(:" + label + ")"})
+			if m.showInternal {
+				m.entries = append(m.entries, graphDetailEntry{isInternal: true, label: "<id>", value: fmt.Sprintf("%d", item.ID)})
+				m.entries = append(m.entries, graphDetailEntry{isInternal: true, label: "<elementId>", value: item.ElementID})
+			}
 			m.addDetailProps(item.Properties)
 		} else {
 			m.entries = append(m.entries, graphDetailEntry{isHeader: true, label: "[:" + item.Type + "]"})
+			if m.showInternal {
+				m.entries = append(m.entries, graphDetailEntry{isInternal: true, label: "<id>", value: fmt.Sprintf("%d", item.ID)})
+				m.entries = append(m.entries, graphDetailEntry{isInternal: true, label: "<elementId>", value: item.ElementID})
+			}
 			m.addDetailProps(item.Properties)
 		}
 	}
@@ -746,6 +772,9 @@ func (m GraphViewModel) renderDetailPropEntry(idx int, e graphDetailEntry, avail
 	isExpanded := idx == m.expandedProp
 
 	keyStyle := graphDetailKeyStyle
+	if e.isInternal {
+		keyStyle = graphDetailInternalKeyStyle
+	}
 	if isSelected {
 		keyStyle = graphDetailKeySelectedStyle
 	}
@@ -767,6 +796,9 @@ func (m GraphViewModel) renderDetailPropEntry(idx int, e graphDetailEntry, avail
 
 	valStr := e.value
 	valStyle := graphDetailValTruncStyle
+	if e.isInternal {
+		valStyle = graphDetailInternalValStyle
+	}
 	if isSelected {
 		valStyle = graphDetailKeySelectedStyle
 	}
@@ -779,6 +811,9 @@ func (m GraphViewModel) renderDetailPropEntry(idx int, e graphDetailEntry, avail
 	}
 
 	expandValStyle := graphDetailValStyle
+	if e.isInternal {
+		expandValStyle = graphDetailInternalValStyle
+	}
 	if isSelected {
 		expandValStyle = graphDetailKeySelectedStyle
 	}

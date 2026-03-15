@@ -24,6 +24,8 @@ type RowPathItem struct {
 	Labels     []string
 	Type       string // edge type
 	Properties map[string]any
+	ID         int64
+	ElementID  string
 }
 
 type ResultNode struct {
@@ -106,16 +108,16 @@ func collectResult(ctx context.Context, result neo4j.ResultWithContext) (*QueryR
 func extractRowPath(val any) []RowPathItem {
 	switch v := val.(type) {
 	case dbtype.Node:
-		return []RowPathItem{{IsNode: true, Labels: v.Labels, Properties: v.Props}}
+		return []RowPathItem{{IsNode: true, Labels: v.Labels, Properties: v.Props, ID: v.Id, ElementID: v.ElementId}}
 	case dbtype.Relationship:
-		return []RowPathItem{{IsNode: false, Type: v.Type, Properties: v.Props}}
+		return []RowPathItem{{IsNode: false, Type: v.Type, Properties: v.Props, ID: v.Id, ElementID: v.ElementId}}
 	case dbtype.Path:
 		var items []RowPathItem
 		for i, node := range v.Nodes {
-			items = append(items, RowPathItem{IsNode: true, Labels: node.Labels, Properties: node.Props})
+			items = append(items, RowPathItem{IsNode: true, Labels: node.Labels, Properties: node.Props, ID: node.Id, ElementID: node.ElementId})
 			if i < len(v.Relationships) {
 				rel := v.Relationships[i]
-				items = append(items, RowPathItem{IsNode: false, Type: rel.Type, Properties: rel.Props})
+				items = append(items, RowPathItem{IsNode: false, Type: rel.Type, Properties: rel.Props, ID: rel.Id, ElementID: rel.ElementId})
 			}
 		}
 		return items

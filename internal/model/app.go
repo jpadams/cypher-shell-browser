@@ -222,19 +222,26 @@ func (a *App) resultHints() []StatusHint {
 	if a.graph.HasGraph() {
 		if a.graph.detailFocus {
 			return []StatusHint{
+				{Key: "v", Desc: "internals", Active: true},
 				{Key: "Ctrl+Y", Desc: "copy", Active: true},
 				{Key: "←/h", Desc: "lines", Active: true},
 				{Key: "Esc", Desc: "query", Active: true},
 				{Key: "?", Desc: "help", Active: true},
 			}
 		}
-		return []StatusHint{
+		hints := []StatusHint{
 			{Key: "Space", Desc: "detail", Active: true},
-			{Key: "Ctrl+Y", Desc: "copy", Active: true},
-			{Key: "m/c", Desc: "MERGE/CREATE", Active: true},
-			{Key: "Esc", Desc: "query", Active: true},
-			{Key: "?", Desc: "help", Active: true},
 		}
+		if a.graph.showDetail {
+			hints = append(hints, StatusHint{Key: "v", Desc: "internals", Active: true})
+		}
+		hints = append(hints,
+			StatusHint{Key: "Ctrl+Y", Desc: "copy", Active: true},
+			StatusHint{Key: "m/c", Desc: "MERGE/CREATE", Active: true},
+			StatusHint{Key: "Esc", Desc: "query", Active: true},
+			StatusHint{Key: "?", Desc: "help", Active: true},
+		)
+		return hints
 	}
 	return []StatusHint{
 		{Key: "Esc", Desc: "query", Active: true},
