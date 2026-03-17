@@ -244,6 +244,8 @@ func (m *QueryModel) updateAutocomplete() {
 		candidates = filterCandidates(m.autocomplete.labels, prefix)
 	case ctxRelType:
 		candidates = filterCandidates(m.autocomplete.relTypes, prefix)
+	case ctxPropKey, ctxDotProp:
+		candidates = filterCandidates(m.autocomplete.propKeys, prefix)
 	case ctxKeyword:
 		candidates = filterCandidates(cypherKeywords, prefix)
 	}

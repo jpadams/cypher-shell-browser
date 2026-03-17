@@ -12,6 +12,8 @@ const (
 	ctxKeyword completionContext = iota
 	ctxLabel
 	ctxRelType
+	ctxPropKey // inside { } map literal: {na| or {name: "x", ag|
+	ctxDotProp // after identifier dot: n.na|
 )
 
 const maxVisible = 8
@@ -39,6 +41,7 @@ type AutocompleteModel struct {
 	context  completionContext
 	labels   []string
 	relTypes []string
+	propKeys []string
 	// cursorCol tracks the column offset for popup positioning
 	cursorCol int
 	// wordStart and wordEnd are byte offsets of the full word being completed
@@ -50,9 +53,10 @@ func NewAutocompleteModel() AutocompleteModel {
 	return AutocompleteModel{}
 }
 
-func (m *AutocompleteModel) SetSchema(labels, relTypes []string) {
+func (m *AutocompleteModel) SetSchema(labels, relTypes, propKeys []string) {
 	m.labels = labels
 	m.relTypes = relTypes
+	m.propKeys = propKeys
 }
 
 func (m *AutocompleteModel) Show(items []string, prefix string, ctx completionContext, col int, wordStart, wordEnd int) {
@@ -189,6 +193,36 @@ func extractContext(text string, cursorPos int) (prefix string, ctx completionCo
 	}
 	before := text[:cursorPos]
 
+	// Helper: find end of identifier/word from cursorPos forward
+	findWordEnd := func() int {
+		e := cursorPos
+		for e < len(text) && isIdentChar(text[e]) {
+			e++
+		}
+		return e
+	}
+
+	// Pass A: dot-notation (ctxDotProp)
+	{
+		ps := cursorPos
+		for ps > 0 && isIdentChar(before[ps-1]) {
+			ps--
+		}
+		if ps > 0 && before[ps-1] == '.' {
+			dotIdx := ps - 1
+			if dotIdx == 0 || !isDigit(before[dotIdx-1]) { // exclude float literals
+				return before[ps:cursorPos], ctxDotProp, ps, findWordEnd()
+			}
+		}
+	}
+
+	// Pass B: map literal brace (ctxPropKey)
+	{
+		if ok, pfx, ps := scanForBraceContext(before, cursorPos); ok {
+			return pfx, ctxPropKey, ps, findWordEnd()
+		}
+	}
+
 	// Scan backwards from cursor to find context
 	// Look for `:` preceded by `(` or `[` (possibly with variable name between)
 	colonIdx := -1
@@ -201,15 +235,6 @@ func extractContext(text string, cursorPos int) (prefix string, ctx completionCo
 			colonIdx = i
 			break
 		}
-	}
-
-	// Helper: find end of identifier/word from cursorPos forward
-	findWordEnd := func() int {
-		e := cursorPos
-		for e < len(text) && isIdentChar(text[e]) {
-			e++
-		}
-		return e
 	}
 
 	if colonIdx >= 0 {
@@ -248,6 +273,53 @@ func extractContext(text string, cursorPos int) (prefix string, ctx completionCo
 	}
 	wEnd := findWordEnd()
 	return before[wStart:cursorPos], ctxKeyword, wStart, wEnd
+}
+
+func isDigit(ch byte) bool {
+	return ch >= '0' && ch <= '9'
+}
+
+func scanForBraceContext(before string, cursorPos int) (isPropKey bool, propPrefix string, propStart int) {
+	ps := cursorPos
+	for ps > 0 && isIdentChar(before[ps-1]) {
+		ps--
+	}
+	prefix := before[ps:cursorPos]
+
+	depth := 0
+	foundComma := false
+	i := ps - 1
+	for i >= 0 {
+		ch := before[i]
+		switch {
+		case ch == '"' || ch == '\'':
+			quote := ch
+			i--
+			for i >= 0 && before[i] != quote {
+				i--
+			}
+			i--
+		case ch == '}':
+			depth++
+			i--
+		case ch == '{':
+			depth--
+			if depth < 0 {
+				return true, prefix, ps
+			}
+			i--
+		case ch == ',' && depth == 0:
+			foundComma = true
+			i--
+		case ch == ':' && depth == 0 && !foundComma:
+			return false, "", 0 // cursor is on value side
+		case (ch == '(' || ch == '[') && depth == 0:
+			return false, "", 0
+		default:
+			i--
+		}
+	}
+	return false, "", 0
 }
 
 func isIdentChar(ch byte) bool {

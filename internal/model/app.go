@@ -48,6 +48,7 @@ type connErrorMsg struct {
 type schemaLoadedMsg struct {
 	labels   []string
 	relTypes []string
+	propKeys []string
 }
 
 func NewApp(cfg *config.Config) App {
@@ -141,7 +142,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(a.query.Focus(), uriTickCmd(), loadSchemaCmd(a.client))
 
 	case schemaLoadedMsg:
-		a.query.autocomplete.SetSchema(msg.labels, msg.relTypes)
+		a.query.autocomplete.SetSchema(msg.labels, msg.relTypes, msg.propKeys)
 		return a, nil
 
 	case connErrorMsg:
@@ -370,7 +371,8 @@ func loadSchemaCmd(client *n4j.Client) tea.Cmd {
 		ctx := context.Background()
 		labels := fetchStringList(client, ctx, "CALL db.labels()")
 		relTypes := fetchStringList(client, ctx, "CALL db.relationshipTypes()")
-		return schemaLoadedMsg{labels: labels, relTypes: relTypes}
+		propKeys := fetchStringList(client, ctx, "CALL db.propertyKeys()")
+		return schemaLoadedMsg{labels: labels, relTypes: relTypes, propKeys: propKeys}
 	}
 }
 
