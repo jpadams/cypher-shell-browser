@@ -46,9 +46,10 @@ type connErrorMsg struct {
 }
 
 type schemaLoadedMsg struct {
-	labels   []string
-	relTypes []string
-	propKeys []string
+	labels       []string
+	relTypes     []string
+	labelProps   map[string][]string
+	relTypeProps map[string][]string
 }
 
 func NewApp(cfg *config.Config) App {
@@ -142,7 +143,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(a.query.Focus(), uriTickCmd(), loadSchemaCmd(a.client))
 
 	case schemaLoadedMsg:
-		a.query.autocomplete.SetSchema(msg.labels, msg.relTypes, msg.propKeys)
+		a.query.autocomplete.SetSchema(msg.labels, msg.relTypes, msg.labelProps, msg.relTypeProps)
 		return a, nil
 
 	case connErrorMsg:
@@ -371,8 +372,13 @@ func loadSchemaCmd(client *n4j.Client) tea.Cmd {
 		ctx := context.Background()
 		labels := fetchStringList(client, ctx, "CALL db.labels()")
 		relTypes := fetchStringList(client, ctx, "CALL db.relationshipTypes()")
-		propKeys := fetchStringList(client, ctx, "CALL db.propertyKeys()")
-		return schemaLoadedMsg{labels: labels, relTypes: relTypes, propKeys: propKeys}
+		labelProps := fetchEntityProps(client, ctx,
+			"CALL db.schema.nodeTypeProperties() YIELD nodeLabels, propertyName "+
+				"UNWIND nodeLabels AS label RETURN DISTINCT label, propertyName")
+		relTypeProps := fetchEntityProps(client, ctx,
+			"CALL db.schema.relTypeProperties() YIELD relType, propertyName "+
+				"RETURN DISTINCT relType, propertyName")
+		return schemaLoadedMsg{labels: labels, relTypes: relTypes, labelProps: labelProps, relTypeProps: relTypeProps}
 	}
 }
 
@@ -388,6 +394,51 @@ func fetchStringList(client *n4j.Client, ctx context.Context, cypher string) []s
 		}
 	}
 	return items
+}
+
+// fetchEntityProps runs a query that returns (entity, propertyName) rows and
+// builds a map of entity → []propertyName.  The entity column may contain
+// Neo4j's internal relType format (e.g. `:"KNOWS"`), which is sanitised to
+// a plain identifier.
+func fetchEntityProps(client *n4j.Client, ctx context.Context, cypher string) map[string][]string {
+	result, err := client.Run(ctx, cypher, nil)
+	if err != nil {
+		return nil
+	}
+	props := make(map[string][]string)
+	seen := make(map[string]map[string]bool)
+	for _, row := range result.Rows {
+		if len(row) < 2 {
+			continue
+		}
+		entity := sanitizeEntityName(row[0])
+		prop := row[1]
+		if entity == "" || prop == "" {
+			continue
+		}
+		if seen[entity] == nil {
+			seen[entity] = make(map[string]bool)
+		}
+		if !seen[entity][prop] {
+			seen[entity][prop] = true
+			props[entity] = append(props[entity], prop)
+		}
+	}
+	return props
+}
+
+// sanitizeEntityName extracts the identifier from Neo4j's internal type
+// representations such as `:"KNOWS"` → "KNOWS".
+func sanitizeEntityName(s string) string {
+	start := 0
+	for start < len(s) && !isIdentChar(s[start]) {
+		start++
+	}
+	end := start
+	for end < len(s) && isIdentChar(s[end]) {
+		end++
+	}
+	return s[start:end]
 }
 
 func queryContainsSchemaChange(query string) bool {

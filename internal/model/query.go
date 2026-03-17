@@ -244,8 +244,27 @@ func (m *QueryModel) updateAutocomplete() {
 		candidates = filterCandidates(m.autocomplete.labels, prefix)
 	case ctxRelType:
 		candidates = filterCandidates(m.autocomplete.relTypes, prefix)
-	case ctxPropKey, ctxDotProp:
-		candidates = filterCandidates(m.autocomplete.propKeys, prefix)
+	case ctxDotProp:
+		// dot is at text[wordStart-1]; variable name precedes it
+		varEnd := wordStart - 1
+		varStart := varEnd
+		for varStart > 0 && isIdentChar(text[varStart-1]) {
+			varStart--
+		}
+		varName := text[varStart:varEnd]
+		entity := extractVarBindings(text)[varName]
+		if entity == "" {
+			m.autocomplete.Hide()
+			return
+		}
+		candidates = filterCandidates(m.autocomplete.propsFor(entity), prefix)
+	case ctxPropKey:
+		entity := findBraceEntityLabel(text, wordStart)
+		if entity == "" {
+			m.autocomplete.Hide()
+			return
+		}
+		candidates = filterCandidates(m.autocomplete.propsFor(entity), prefix)
 	case ctxKeyword:
 		candidates = filterCandidates(cypherKeywords, prefix)
 	}

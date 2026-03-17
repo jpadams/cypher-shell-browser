@@ -39,9 +39,10 @@ type AutocompleteModel struct {
 	selected int
 	prefix   string
 	context  completionContext
-	labels   []string
-	relTypes []string
-	propKeys []string
+	labels      []string
+	relTypes    []string
+	labelProps  map[string][]string
+	relTypeProps map[string][]string
 	// cursorCol tracks the column offset for popup positioning
 	cursorCol int
 	// wordStart and wordEnd are byte offsets of the full word being completed
@@ -53,10 +54,19 @@ func NewAutocompleteModel() AutocompleteModel {
 	return AutocompleteModel{}
 }
 
-func (m *AutocompleteModel) SetSchema(labels, relTypes, propKeys []string) {
+func (m *AutocompleteModel) SetSchema(labels, relTypes []string, labelProps, relTypeProps map[string][]string) {
 	m.labels = labels
 	m.relTypes = relTypes
-	m.propKeys = propKeys
+	m.labelProps = labelProps
+	m.relTypeProps = relTypeProps
+}
+
+// propsFor returns property names for a node label or relationship type.
+func (m *AutocompleteModel) propsFor(entity string) []string {
+	if props, ok := m.labelProps[entity]; ok {
+		return props
+	}
+	return m.relTypeProps[entity]
 }
 
 func (m *AutocompleteModel) Show(items []string, prefix string, ctx completionContext, col int, wordStart, wordEnd int) {
@@ -273,6 +283,133 @@ func extractContext(text string, cursorPos int) (prefix string, ctx completionCo
 	}
 	wEnd := findWordEnd()
 	return before[wStart:cursorPos], ctxKeyword, wStart, wEnd
+}
+
+// extractVarBindings scans a query for pattern variable→label/type bindings,
+// e.g. (n:Person) → {"n": "Person"}, [r:KNOWS] → {"r": "KNOWS"}.
+func extractVarBindings(query string) map[string]string {
+	bindings := make(map[string]string)
+	i := 0
+	for i < len(query) {
+		ch := query[i]
+		// skip string literals
+		if ch == '"' || ch == '\'' {
+			quote := ch
+			i++
+			for i < len(query) && query[i] != quote {
+				if query[i] == '\\' {
+					i++
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		if ch == '(' || ch == '[' {
+			i++
+			for i < len(query) && (query[i] == ' ' || query[i] == '\t') {
+				i++
+			}
+			varStart := i
+			for i < len(query) && isIdentChar(query[i]) {
+				i++
+			}
+			varName := query[varStart:i]
+			if i < len(query) && query[i] == ':' {
+				i++
+				labelStart := i
+				for i < len(query) && isIdentChar(query[i]) {
+					i++
+				}
+				label := query[labelStart:i]
+				if varName != "" && label != "" {
+					if _, exists := bindings[varName]; !exists {
+						bindings[varName] = label
+					}
+				}
+			}
+			continue
+		}
+		i++
+	}
+	return bindings
+}
+
+// findBraceEntityLabel scans backward from propStart to find the label or
+// relationship type of the enclosing node/relationship pattern.
+// Returns "" when no label is determinable (anonymous or no-label pattern).
+func findBraceEntityLabel(text string, propStart int) string {
+	// Step 1: find the opening { that contains propStart
+	braceIdx := -1
+	i := propStart - 1
+	depth := 0
+	for i >= 0 {
+		ch := text[i]
+		if ch == '"' || ch == '\'' {
+			quote := ch
+			i--
+			for i >= 0 && text[i] != quote {
+				i--
+			}
+		} else if ch == '}' {
+			depth++
+		} else if ch == '{' {
+			if depth == 0 {
+				braceIdx = i
+				break
+			}
+			depth--
+		}
+		i--
+	}
+	if braceIdx < 0 {
+		return ""
+	}
+
+	// Step 2: scan backward from { to find the enclosing ( or [
+	j := braceIdx - 1
+	for j >= 0 {
+		ch := text[j]
+		if ch == '(' || ch == '[' {
+			break
+		}
+		if ch == ')' || ch == ']' {
+			closer := ch
+			opener := byte('(')
+			if closer == ']' {
+				opener = '['
+			}
+			j--
+			d := 1
+			for j >= 0 && d > 0 {
+				if text[j] == closer {
+					d++
+				}
+				if text[j] == opener {
+					d--
+				}
+				j--
+			}
+			continue
+		}
+		j--
+	}
+	if j < 0 {
+		return ""
+	}
+
+	// Step 3: extract label from text[j+1:braceIdx], e.g. "n:Person " or ":Person" or "r:KNOWS"
+	inner := strings.TrimSpace(text[j+1 : braceIdx])
+	colonIdx := strings.IndexByte(inner, ':')
+	if colonIdx < 0 {
+		return ""
+	}
+	after := inner[colonIdx+1:]
+	end := 0
+	for end < len(after) && isIdentChar(after[end]) {
+		end++
+	}
+	return after[:end]
 }
 
 func isDigit(ch byte) bool {
