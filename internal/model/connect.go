@@ -144,6 +144,12 @@ func defaultDatabase(uri, username string) string {
 func (m ConnectModel) View() string {
 	labels := []string{"URI:", "Username:", "Password:", "Database:"}
 
+	// Show the inferred database name as ghost text when the field is empty
+	if m.inputs[3].Value() == "" {
+		inferred := defaultDatabase(m.inputs[0].Value(), m.inputs[1].Value())
+		m.inputs[3].Placeholder = "auto-detect (" + inferred + ")"
+	}
+
 	rows := make([]string, len(m.inputs))
 	for i, input := range m.inputs {
 		label := connectLabelStyle.Render(labels[i])
