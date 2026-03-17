@@ -9,11 +9,12 @@ import (
 type completionContext int
 
 const (
-	ctxKeyword completionContext = iota
-	ctxLabel
-	ctxRelType
-	ctxPropKey // inside { } map literal: {na| or {name: "x", ag|
-	ctxDotProp // after identifier dot: n.na|
+	ctxKeyword   completionContext = iota
+	ctxLabel                       // after (: or (:Foo:
+	ctxRelType                     // after [:
+	ctxPropKey                     // inside { } map literal: {na| or {name: "x", ag|
+	ctxDotProp                     // after identifier dot: n.na|
+	ctxProcedure                   // after CALL keyword: CALL db.la|
 )
 
 const maxVisible = 8
@@ -39,10 +40,11 @@ type AutocompleteModel struct {
 	selected int
 	prefix   string
 	context  completionContext
-	labels      []string
-	relTypes    []string
-	labelProps  map[string][]string
+	labels       []string
+	relTypes     []string
+	labelProps   map[string][]string
 	relTypeProps map[string][]string
+	procedures   []string
 	// cursorCol tracks the column offset for popup positioning
 	cursorCol int
 	// wordStart and wordEnd are byte offsets of the full word being completed
@@ -54,11 +56,12 @@ func NewAutocompleteModel() AutocompleteModel {
 	return AutocompleteModel{}
 }
 
-func (m *AutocompleteModel) SetSchema(labels, relTypes []string, labelProps, relTypeProps map[string][]string) {
+func (m *AutocompleteModel) SetSchema(labels, relTypes []string, labelProps, relTypeProps map[string][]string, procedures []string) {
 	m.labels = labels
 	m.relTypes = relTypes
 	m.labelProps = labelProps
 	m.relTypeProps = relTypeProps
+	m.procedures = procedures
 }
 
 // propsFor returns property names for a node label or relationship type.
@@ -210,6 +213,31 @@ func extractContext(text string, cursorPos int) (prefix string, ctx completionCo
 			e++
 		}
 		return e
+	}
+
+	// Pass 0: CALL procedure context — must come before dot-notation check
+	// so that "CALL db.la|" is not mistaken for dot-property access.
+	{
+		ps := cursorPos
+		for ps > 0 && isProcNameChar(before[ps-1]) {
+			ps--
+		}
+		// Skip whitespace between CALL and the procedure name
+		j := ps - 1
+		for j >= 0 && (before[j] == ' ' || before[j] == '\t' || before[j] == '\n' || before[j] == '\r') {
+			j--
+		}
+		// j should point at the last char of "CALL"
+		if j >= 3 && strings.EqualFold(before[j-3:j+1], "CALL") {
+			// Confirm CALL is not part of a larger identifier
+			if j == 3 || !isIdentChar(before[j-4]) {
+				wEnd := cursorPos
+				for wEnd < len(text) && isProcNameChar(text[wEnd]) {
+					wEnd++
+				}
+				return before[ps:cursorPos], ctxProcedure, ps, wEnd
+			}
+		}
 	}
 
 	// Pass A: dot-notation (ctxDotProp)
@@ -461,6 +489,10 @@ func scanForBraceContext(before string, cursorPos int) (isPropKey bool, propPref
 
 func isIdentChar(ch byte) bool {
 	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'
+}
+
+func isProcNameChar(ch byte) bool {
+	return isIdentChar(ch) || ch == '.'
 }
 
 // filterCandidates returns candidates that match the prefix (case-insensitive).

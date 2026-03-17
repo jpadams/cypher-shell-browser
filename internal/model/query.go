@@ -240,6 +240,8 @@ func (m *QueryModel) updateAutocomplete() {
 
 	var candidates []string
 	switch ctx {
+	case ctxProcedure:
+		candidates = filterCandidates(m.autocomplete.procedures, prefix)
 	case ctxLabel:
 		candidates = filterCandidates(m.autocomplete.labels, prefix)
 	case ctxRelType:

@@ -50,6 +50,7 @@ type schemaLoadedMsg struct {
 	relTypes     []string
 	labelProps   map[string][]string
 	relTypeProps map[string][]string
+	procedures   []string
 }
 
 func NewApp(cfg *config.Config) App {
@@ -143,7 +144,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(a.query.Focus(), uriTickCmd(), loadSchemaCmd(a.client))
 
 	case schemaLoadedMsg:
-		a.query.autocomplete.SetSchema(msg.labels, msg.relTypes, msg.labelProps, msg.relTypeProps)
+		a.query.autocomplete.SetSchema(msg.labels, msg.relTypes, msg.labelProps, msg.relTypeProps, msg.procedures)
 		return a, nil
 
 	case connErrorMsg:
@@ -378,7 +379,12 @@ func loadSchemaCmd(client *n4j.Client) tea.Cmd {
 		relTypeProps := fetchEntityProps(client, ctx,
 			"CALL db.schema.relTypeProperties() YIELD relType, propertyName "+
 				"RETURN DISTINCT relType, propertyName")
-		return schemaLoadedMsg{labels: labels, relTypes: relTypes, labelProps: labelProps, relTypeProps: relTypeProps}
+		procedures := fetchStringList(client, ctx, "CALL dbms.procedures() YIELD name RETURN name ORDER BY name")
+		if len(procedures) == 0 {
+			// Neo4j 5.x alternative
+			procedures = fetchStringList(client, ctx, "SHOW PROCEDURES YIELD name RETURN name ORDER BY name")
+		}
+		return schemaLoadedMsg{labels: labels, relTypes: relTypes, labelProps: labelProps, relTypeProps: relTypeProps, procedures: procedures}
 	}
 }
 
