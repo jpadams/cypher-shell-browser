@@ -116,12 +116,16 @@ func (m QueryModel) Update(msg tea.Msg) (QueryModel, tea.Cmd) {
 		if m.autocomplete.Visible() {
 			switch msg.String() {
 			case "tab", "enter":
-				full, start, end := m.autocomplete.Accept()
+				full, start, end, isKeyword := m.autocomplete.Accept()
 				if full != "" {
 					// Replace the entire word (before and after cursor) with the completion
 					val := m.textarea.Value()
-					newVal := val[:start] + full + val[end:]
-					newCursor := start + len(full)
+					suffix := ""
+					if isKeyword && (end >= len(val) || val[end] != ' ') {
+						suffix = " "
+					}
+					newVal := val[:start] + full + suffix + val[end:]
+					newCursor := start + len(full) + len(suffix)
 					m.textarea.SetValue(newVal)
 					m.setCursorToBytePos(newCursor)
 				}

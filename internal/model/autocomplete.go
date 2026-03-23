@@ -104,15 +104,16 @@ func (m *AutocompleteModel) MoveDown() {
 	}
 }
 
-// Accept returns the full completion text and the byte range to replace.
-func (m *AutocompleteModel) Accept() (full string, start, end int) {
+// Accept returns the full completion text, the byte range to replace, and whether it is a keyword completion.
+func (m *AutocompleteModel) Accept() (full string, start, end int, isKeyword bool) {
 	if !m.visible || len(m.items) == 0 {
-		return "", 0, 0
+		return "", 0, 0, false
 	}
 	item := m.items[m.selected]
 	s, e := m.wordStart, m.wordEnd
+	kw := m.context == ctxKeyword
 	m.Hide()
-	return item, s, e
+	return item, s, e, kw
 }
 
 // Visible returns whether the popup is showing.
