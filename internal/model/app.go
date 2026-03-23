@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -141,7 +142,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.graph.SetSize(a.width, resultH)
 		a.statusbar.SetConnected(msg.uri)
 		a.statusbar.SetHints(queryInputHints(false))
-		return a, tea.Batch(a.query.Focus(), uriTickCmd(), loadSchemaCmd(a.client))
+		return a, tea.Batch(a.query.Focus(), uriTickCmd(), loadSchemaCmd(a.client), schemaTickCmd())
 
 	case schemaLoadedMsg:
 		a.query.autocomplete.SetSchema(msg.labels, msg.relTypes, msg.labelProps, msg.relTypeProps, msg.procedures)
@@ -199,6 +200,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errScrollTickMsg:
 		cmd := a.statusbar.Update(msg)
 		return a, cmd
+
+	case schemaTickMsg:
+		if a.queryFocus && a.client != nil {
+			return a, tea.Batch(loadSchemaCmd(a.client), schemaTickCmd())
+		}
+		return a, nil
 	}
 
 	// Route to sub-models
@@ -282,7 +289,7 @@ func (a App) updateQueryState(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.setResultActive(false)
 			a.graph.ResetPrefix()
 			a.statusbar.SetHints(queryInputHints(a.hasResult))
-			return a, a.query.Focus()
+			return a, tea.Batch(a.query.Focus(), loadSchemaCmd(a.client), schemaTickCmd())
 		case "ctrl+r":
 			if a.queryFocus {
 				a.statusbar.SetLoading(true)
@@ -366,6 +373,14 @@ func (a *App) setResultActive(active bool) {
 		a.table.active = active
 		a.graph.active = false
 	}
+}
+
+type schemaTickMsg struct{}
+
+func schemaTickCmd() tea.Cmd {
+	return tea.Tick(10*time.Second, func(time.Time) tea.Msg {
+		return schemaTickMsg{}
+	})
 }
 
 func loadSchemaCmd(client *n4j.Client) tea.Cmd {
