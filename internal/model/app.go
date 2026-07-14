@@ -244,6 +244,8 @@ func (a *App) resultHints() []StatusHint {
 		}
 		if a.graph.showDetail {
 			hints = append(hints, StatusHint{Key: "v", Desc: "internals", Active: true})
+		} else {
+			hints = append(hints, StatusHint{Key: "v", Desc: "verbosity", Active: true})
 		}
 		hints = append(hints,
 			StatusHint{Key: "Ctrl+Y", Desc: "copy", Active: true},

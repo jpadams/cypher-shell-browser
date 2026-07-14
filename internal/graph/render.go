@@ -180,22 +180,28 @@ func compactEdgeLine(g *Graph, e *GraphEdge) string {
 	return sb.String()
 }
 
-// RenderCompactNode renders a single node in compact Cypher style.
-func RenderCompactNode(labels []string, props map[string]any) string {
+// RenderCompactNode renders a single node in compact Cypher style. At
+// VerbosityMinimal only the label is shown; the {…} property block is emitted
+// from VerbosityMedium upward.
+func RenderCompactNode(labels []string, props map[string]any, v Verbosity) string {
 	label := formatNodeLabel(labels)
-	fmtProps := formatNodeProps(props)
 	var sb strings.Builder
 	sb.WriteString(compactParenStyle.Render("("))
 	sb.WriteString(nodeLabelStyle.Render(label))
-	if len(fmtProps) > 0 {
-		sb.WriteString(compactPropStyle.Render(" {" + strings.Join(fmtProps, ", ") + "}"))
+	if v >= VerbosityMedium {
+		fmtProps := formatNodeProps(props)
+		if len(fmtProps) > 0 {
+			sb.WriteString(compactPropStyle.Render(" {" + strings.Join(fmtProps, ", ") + "}"))
+		}
 	}
 	sb.WriteString(compactParenStyle.Render(")"))
 	return sb.String()
 }
 
-// RenderCompactEdge renders a single edge in compact Cypher style.
-func RenderCompactEdge(relType string) string {
+// RenderCompactEdge renders a single edge in compact Cypher style. Edge
+// rendering is identical across the current verbosity levels; the parameter
+// leaves room for a future relationship-property level.
+func RenderCompactEdge(relType string, v Verbosity) string {
 	label := fmt.Sprintf("[:%s]", relType)
 	return edgeStyle.Render("-") + edgeLabelStyle.Render(label) + edgeStyle.Render("->")
 }

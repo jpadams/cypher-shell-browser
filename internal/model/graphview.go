@@ -101,7 +101,8 @@ type GraphViewModel struct {
 	propCursor   int
 	expandedProp int
 	detailScroll int
-	showInternal bool // whether to show <id>/<elementId> internal fields
+	showInternal bool            // whether to show <id>/<elementId> internal fields
+	verbosity    graph.Verbosity // results-pane property verbosity (persists across queries)
 }
 
 func NewGraphViewModel() GraphViewModel {
@@ -109,6 +110,7 @@ func NewGraphViewModel() GraphViewModel {
 		style:        graph.StyleCompact,
 		propCursor:   -1,
 		expandedProp: -1,
+		verbosity:    graph.VerbosityMedium,
 	}
 }
 
@@ -166,7 +168,7 @@ func (m *GraphViewModel) ToggleStyle() {
 func (m *GraphViewModel) renderContent() {
 	var content string
 	if m.style == graph.StyleCompact && len(m.rowPaths) > 0 {
-		content = renderCompactFromRows(m.rowPaths, m.cypherPrefix)
+		content = renderCompactFromRows(m.rowPaths, m.cypherPrefix, m.verbosity)
 	} else {
 		content = graph.RenderGraph(m.graph, m.style)
 	}
@@ -354,10 +356,18 @@ func (m GraphViewModel) Update(msg tea.Msg) (GraphViewModel, tea.Cmd) {
 			}
 			return m, nil
 
-		case "v":
+		case "v", "V":
 			if m.showDetail {
 				m.showInternal = !m.showInternal
 				m.updateDetail()
+			} else {
+				if m.verbosity == graph.VerbosityMedium {
+					m.verbosity = graph.VerbosityMinimal
+				} else {
+					m.verbosity = graph.VerbosityMedium
+				}
+				m.scrollX = 0
+				m.renderContent()
 			}
 			return m, nil
 
@@ -874,7 +884,7 @@ func (m GraphViewModel) plainCypherText() string {
 	return strings.Join(lines, "\n")
 }
 
-func renderCompactFromRows(rowPaths [][]n4j.RowPathItem, prefix string) string {
+func renderCompactFromRows(rowPaths [][]n4j.RowPathItem, prefix string, v graph.Verbosity) string {
 	var lines []string
 	styledPrefix := ""
 	if prefix != "" {
@@ -888,9 +898,9 @@ func renderCompactFromRows(rowPaths [][]n4j.RowPathItem, prefix string) string {
 		sb.WriteString(styledPrefix)
 		for _, item := range path {
 			if item.IsNode {
-				sb.WriteString(graph.RenderCompactNode(item.Labels, item.Properties))
+				sb.WriteString(graph.RenderCompactNode(item.Labels, item.Properties, v))
 			} else {
-				sb.WriteString(graph.RenderCompactEdge(item.Type))
+				sb.WriteString(graph.RenderCompactEdge(item.Type, v))
 			}
 		}
 		lines = append(lines, sb.String())

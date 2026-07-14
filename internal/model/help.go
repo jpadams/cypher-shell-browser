@@ -72,6 +72,7 @@ func (m HelpModel) View() string {
 		helpLine("→/l or Enter", "Focus detail panel"),
 		helpLine("←/h", "Focus Cypher lines"),
 		helpLine("m/c", "Toggle MERGE/CREATE prefix"),
+		helpLine("v", "Toggle results verbosity (detail closed)"),
 		helpLine("Ctrl+Y", "Copy Cypher to clipboard"),
 
 		"",

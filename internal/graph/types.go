@@ -47,6 +47,13 @@ const (
 	StyleCompact
 )
 
+type Verbosity int
+
+const (
+	VerbosityMinimal Verbosity = iota
+	VerbosityMedium
+)
+
 type StyledCell struct {
 	Char     rune
 	Style    lipgloss.Style
