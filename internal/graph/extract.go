@@ -105,12 +105,23 @@ func formatAllNodeProps(props map[string]any) []string {
 }
 
 func cypherValue(v any) string {
-	switch v.(type) {
+	switch val := v.(type) {
 	case int, int64, float64, bool:
 		return fmt.Sprintf("%v", v)
+	case string:
+		return "'" + escapeCypherString(val) + "'"
 	default:
-		return fmt.Sprintf("'%v'", v)
+		return "'" + escapeCypherString(fmt.Sprintf("%v", v)) + "'"
 	}
+}
+
+// escapeCypherString escapes a string for use inside a single-quoted Cypher
+// literal. Backslashes are escaped first so the backslashes introduced for
+// single quotes are not themselves re-escaped.
+func escapeCypherString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `'`, `\'`)
+	return s
 }
 
 func trimGraph(g *Graph) {
