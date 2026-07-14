@@ -50,7 +50,7 @@ type queryErrorMsg struct {
 	err error
 }
 
-type queryCopiedMsg struct{}
+type queryCopiedMsg struct{ text string }
 
 func NewQueryModel(client *n4j.Client) QueryModel {
 	ta := textarea.New()

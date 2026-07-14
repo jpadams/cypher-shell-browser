@@ -26,6 +26,8 @@ A terminal UI for Neo4j — write Cypher queries and explore results also writte
 - Connect to any Neo4j instance (local or remote) with bolt/neo4j URI schemes
 - Write and run Cypher queries with syntax highlighting and autocomplete
 - True Cypher output with hotkey for MERGE/CREATE for subgraph portability
+- Copy Cypher to the clipboard — the highlighted row (`Ctrl+Y`) or all results (`Ctrl+A`)
+- Toggle results verbosity (`v`) to show or hide node properties for scanning shape
 - Navigate nodes and relationships with the keyboard
 - Query history persisted across sessions
 - Status bar with context-aware key binding hints

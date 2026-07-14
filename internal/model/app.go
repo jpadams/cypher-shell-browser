@@ -190,7 +190,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 
 	case queryCopiedMsg:
-		a.statusbar.SetMessage("Copied to clipboard")
+		text := msg.text
+		if text == "" {
+			text = "Copied to clipboard"
+		}
+		a.statusbar.SetMessage(text)
 		return a, nil
 
 	case uriTickMsg:
@@ -248,7 +252,8 @@ func (a *App) resultHints() []StatusHint {
 			hints = append(hints, StatusHint{Key: "v", Desc: "verbosity", Active: true})
 		}
 		hints = append(hints,
-			StatusHint{Key: "Ctrl+Y", Desc: "copy", Active: true},
+			StatusHint{Key: "Ctrl+Y", Desc: "copy row", Active: true},
+			StatusHint{Key: "Ctrl+A", Desc: "copy all", Active: true},
 			StatusHint{Key: "m/c", Desc: "MERGE/CREATE", Active: true},
 			StatusHint{Key: "Esc", Desc: "query", Active: true},
 			StatusHint{Key: "?", Desc: "help", Active: true},

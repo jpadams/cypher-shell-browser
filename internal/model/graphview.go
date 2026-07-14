@@ -308,11 +308,20 @@ func (m GraphViewModel) Update(msg tea.Msg) (GraphViewModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+y":
+			text := m.plainCypherRow()
+			if text != "" {
+				copyToClipboard(text)
+			}
+			return m, func() tea.Msg { return queryCopiedMsg{text: "Copied row to clipboard"} }
+
+		case "ctrl+a":
 			text := m.plainCypherText()
 			if text != "" {
 				copyToClipboard(text)
 			}
-			return m, func() tea.Msg { return queryCopiedMsg{} }
+			return m, func() tea.Msg {
+				return queryCopiedMsg{text: fmt.Sprintf("Copied %d rows to clipboard", m.rowCount())}
+			}
 
 		case "m":
 			if !m.detailFocus {
@@ -861,27 +870,59 @@ func (m GraphViewModel) renderDetailPropEntry(idx int, e graphDetailEntry, avail
 
 // --- Existing helpers ---
 
+// plainCypherText returns every result row as plain Cypher, one per line.
 func (m GraphViewModel) plainCypherText() string {
 	if len(m.rowPaths) == 0 {
 		return ""
 	}
 	var lines []string
 	for _, path := range m.rowPaths {
-		if len(path) == 0 {
-			continue
+		if line := m.plainCypherPath(path); line != "" {
+			lines = append(lines, line)
 		}
-		var sb strings.Builder
-		sb.WriteString(m.cypherPrefix)
-		for _, item := range path {
-			if item.IsNode {
-				sb.WriteString(graph.PlainCypherNode(item.Labels, item.Properties))
-			} else {
-				sb.WriteString(graph.PlainCypherEdge(item.Type))
-			}
-		}
-		lines = append(lines, sb.String())
 	}
 	return strings.Join(lines, "\n")
+}
+
+// plainCypherRow returns the plain Cypher for the row under the cursor.
+func (m GraphViewModel) plainCypherRow() string {
+	if !m.isDataLine(m.cursor) {
+		return ""
+	}
+	rowIdx := m.lineToRow[m.cursor]
+	if rowIdx < 0 || rowIdx >= len(m.rowPaths) {
+		return ""
+	}
+	return m.plainCypherPath(m.rowPaths[rowIdx])
+}
+
+// plainCypherPath renders a single row path as plain Cypher (with the active
+// MERGE/CREATE prefix). Returns "" for an empty path.
+func (m GraphViewModel) plainCypherPath(path []n4j.RowPathItem) string {
+	if len(path) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString(m.cypherPrefix)
+	for _, item := range path {
+		if item.IsNode {
+			sb.WriteString(graph.PlainCypherNode(item.Labels, item.Properties))
+		} else {
+			sb.WriteString(graph.PlainCypherEdge(item.Type))
+		}
+	}
+	return sb.String()
+}
+
+// rowCount returns the number of non-empty result rows.
+func (m GraphViewModel) rowCount() int {
+	n := 0
+	for _, path := range m.rowPaths {
+		if len(path) > 0 {
+			n++
+		}
+	}
+	return n
 }
 
 func renderCompactFromRows(rowPaths [][]n4j.RowPathItem, prefix string, v graph.Verbosity) string {

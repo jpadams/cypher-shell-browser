@@ -73,7 +73,8 @@ func (m HelpModel) View() string {
 		helpLine("←/h", "Focus Cypher lines"),
 		helpLine("m/c", "Toggle MERGE/CREATE prefix"),
 		helpLine("v", "Toggle results verbosity (detail closed)"),
-		helpLine("Ctrl+Y", "Copy Cypher to clipboard"),
+		helpLine("Ctrl+Y", "Copy highlighted row's Cypher to clipboard"),
+		helpLine("Ctrl+A", "Copy all rows' Cypher to clipboard"),
 
 		"",
 		lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("Press ? or Esc to close"),
