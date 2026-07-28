@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -58,11 +59,14 @@ func NewApp(cfg *config.Config) App {
 	app := App{
 		cfg:       cfg,
 		state:     stateConnect,
-		connect:   NewConnectModel(cfg.URI, cfg.Username, cfg.Password, cfg.Database),
+		connect:   NewConnectModel(cfg),
 		table:     NewTableViewModel(),
 		graph:     NewGraphViewModel(),
 		statusbar: NewStatusBar(),
 		help:      NewHelpModel(),
+	}
+	if cfg.CredFile != "" {
+		app.statusbar.SetMessage("Loaded credentials from " + filepath.Base(cfg.CredFile))
 	}
 	return app
 }
@@ -151,6 +155,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case connErrorMsg:
 		cmd := a.statusbar.SetError(fmt.Sprintf("Connection failed: %s", msg.err))
 		return a, cmd
+
+	case credsLoadedMsg:
+		if msg.err != nil {
+			return a, a.statusbar.SetError(fmt.Sprintf("Credentials file: %s", msg.err))
+		}
+		a.statusbar.SetMessage(fmt.Sprintf("Loaded credentials from %s — Enter to connect", filepath.Base(msg.path)))
+		return a, nil
 
 	case queryResultMsg:
 		a.statusbar.SetLoading(false)

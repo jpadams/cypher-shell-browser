@@ -59,6 +59,11 @@ func (m HelpModel) View() string {
 		helpLine("?", "Toggle this help"),
 		helpLine("Ctrl+L", "Clear / new query"),
 
+		helpSectionStyle.Render("Connect"),
+		helpLine("Tab / ↑↓", "Move between fields"),
+		helpLine("Ctrl+O", "Load credentials file (.env or Aura .txt)"),
+		helpLine("Enter", "Connect"),
+
 		helpSectionStyle.Render("Query Input"),
 		helpLine("Ctrl+R", "Run query"),
 		helpLine("Ctrl+Y", "Copy query to clipboard"),

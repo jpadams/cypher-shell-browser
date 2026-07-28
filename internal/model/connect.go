@@ -1,11 +1,15 @@
 package model
 
 import (
+	"errors"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/jeremyadams/cypher-shell-browser/internal/config"
 )
 
 var (
@@ -22,11 +26,25 @@ var (
 				Foreground(lipgloss.Color("86"))
 )
 
+// Indices into ConnectModel.inputs.
+const (
+	fieldCredFile = iota
+	fieldURI
+	fieldUsername
+	fieldPassword
+	fieldDatabase
+	numConnectFields
+)
+
 type ConnectModel struct {
 	inputs  []textinput.Model
 	focused int
 	width   int
 	height  int
+
+	// discovered is a credentials file found in the working directory,
+	// offered as the placeholder for the cred file field.
+	discovered string
 }
 
 type connectSubmitMsg struct {
@@ -36,10 +54,26 @@ type connectSubmitMsg struct {
 	database string
 }
 
-func NewConnectModel(uri, username, password, database string) ConnectModel {
+// credsLoadedMsg reports the outcome of loading a credentials file from the
+// connect screen. err is nil on success.
+type credsLoadedMsg struct {
+	path string
+	err  error
+}
+
+var errNoCredFile = errors.New("no credentials file given (.env or Neo4j-…-Created-….txt)")
+
+func NewConnectModel(cfg *config.Config) ConnectModel {
+	uri, username, password, database := cfg.URI, cfg.Username, cfg.Password, cfg.Database
+
+	credInput := textinput.New()
+	credInput.Width = 40
+	if cfg.CredFile != "" {
+		credInput.SetValue(cfg.CredFile)
+	}
+
 	uriInput := textinput.New()
 	uriInput.Placeholder = "neo4j://localhost:7687"
-	uriInput.Focus()
 	uriInput.Width = 40
 	if uri != "" {
 		uriInput.SetValue(uri)
@@ -67,10 +101,25 @@ func NewConnectModel(uri, username, password, database string) ConnectModel {
 		dbInput.SetValue(database)
 	}
 
-	return ConnectModel{
-		inputs:  []textinput.Model{uriInput, userInput, passInput, dbInput},
-		focused: 0,
+	m := ConnectModel{
+		inputs:     make([]textinput.Model, numConnectFields),
+		focused:    fieldURI,
+		discovered: config.DiscoverCredentialsFile("."),
 	}
+	m.inputs[fieldCredFile] = credInput
+	m.inputs[fieldURI] = uriInput
+	m.inputs[fieldUsername] = userInput
+	m.inputs[fieldPassword] = passInput
+	m.inputs[fieldDatabase] = dbInput
+
+	if m.discovered != "" {
+		m.inputs[fieldCredFile].Placeholder = filepath.Base(m.discovered)
+	} else {
+		m.inputs[fieldCredFile].Placeholder = "path to .env or Neo4j-…-Created-….txt"
+	}
+
+	m.inputs[m.focused].Focus()
+	return m
 }
 
 func (m *ConnectModel) SetSize(w, h int) {
@@ -82,6 +131,8 @@ func (m ConnectModel) Update(msg tea.Msg) (ConnectModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "ctrl+o":
+			return m.loadCreds()
 		case "tab", "down":
 			m.focused = (m.focused + 1) % len(m.inputs)
 			return m, m.updateFocus()
@@ -89,30 +140,83 @@ func (m ConnectModel) Update(msg tea.Msg) (ConnectModel, tea.Cmd) {
 			m.focused = (m.focused - 1 + len(m.inputs)) % len(m.inputs)
 			return m, m.updateFocus()
 		case "enter":
+			// Enter on the cred file field loads it rather than advancing.
+			if m.focused == fieldCredFile && (m.inputs[fieldCredFile].Value() != "" || m.discovered != "") {
+				return m.loadCreds()
+			}
 			if m.focused < len(m.inputs)-1 {
 				m.focused++
 				return m, m.updateFocus()
 			}
-			uri := m.inputs[0].Value()
-			username := m.inputs[1].Value()
-			database := m.inputs[3].Value()
-			if database == "" {
-				database = defaultDatabase(uri, username)
-			}
-			return m, func() tea.Msg {
-				return connectSubmitMsg{
-					uri:      uri,
-					username: username,
-					password: m.inputs[2].Value(),
-					database: database,
-				}
-			}
+			return m, m.submit()
 		}
 	}
 
 	var cmd tea.Cmd
 	m.inputs[m.focused], cmd = m.inputs[m.focused].Update(msg)
 	return m, cmd
+}
+
+func (m ConnectModel) submit() tea.Cmd {
+	uri := m.inputs[fieldURI].Value()
+	username := m.inputs[fieldUsername].Value()
+	database := m.inputs[fieldDatabase].Value()
+	if database == "" {
+		database = defaultDatabase(uri, username)
+	}
+	password := m.inputs[fieldPassword].Value()
+	return func() tea.Msg {
+		return connectSubmitMsg{
+			uri:      uri,
+			username: username,
+			password: password,
+			database: database,
+		}
+	}
+}
+
+// loadCreds reads the credentials file named in the cred file field — falling
+// back to the file discovered in the working directory — and fills in whatever
+// settings it provides.
+func (m ConnectModel) loadCreds() (ConnectModel, tea.Cmd) {
+	path := strings.TrimSpace(m.inputs[fieldCredFile].Value())
+	if path == "" {
+		path = m.discovered
+	}
+	if path == "" {
+		return m, func() tea.Msg {
+			return credsLoadedMsg{err: errNoCredFile}
+		}
+	}
+
+	creds, err := config.LoadCredentialsFile(path)
+	if err != nil {
+		return m, func() tea.Msg {
+			return credsLoadedMsg{path: path, err: err}
+		}
+	}
+
+	m.inputs[fieldCredFile].SetValue(path)
+	if creds.URI != "" {
+		m.inputs[fieldURI].SetValue(creds.URI)
+	}
+	if creds.Username != "" {
+		m.inputs[fieldUsername].SetValue(creds.Username)
+	}
+	if creds.Password != "" {
+		m.inputs[fieldPassword].SetValue(creds.Password)
+	}
+	if creds.Database != "" {
+		m.inputs[fieldDatabase].SetValue(creds.Database)
+	}
+
+	// Park on the last field so Enter connects straight away.
+	m.focused = fieldDatabase
+	focusCmd := m.updateFocus()
+
+	return m, tea.Batch(focusCmd, func() tea.Msg {
+		return credsLoadedMsg{path: path}
+	})
 }
 
 func (m *ConnectModel) updateFocus() tea.Cmd {
@@ -142,12 +246,12 @@ func defaultDatabase(uri, username string) string {
 }
 
 func (m ConnectModel) View() string {
-	labels := []string{"URI:", "Username:", "Password:", "Database:"}
+	labels := []string{"Cred file:", "URI:", "Username:", "Password:", "Database:"}
 
 	// Show the inferred database name as ghost text when the field is empty
-	if m.inputs[3].Value() == "" {
-		inferred := defaultDatabase(m.inputs[0].Value(), m.inputs[1].Value())
-		m.inputs[3].Placeholder = "auto-detect (" + inferred + ")"
+	if m.inputs[fieldDatabase].Value() == "" {
+		inferred := defaultDatabase(m.inputs[fieldURI].Value(), m.inputs[fieldUsername].Value())
+		m.inputs[fieldDatabase].Placeholder = "auto-detect (" + inferred + ")"
 	}
 
 	rows := make([]string, len(m.inputs))
@@ -159,7 +263,8 @@ func (m ConnectModel) View() string {
 	form := lipgloss.JoinVertical(lipgloss.Left, rows...)
 
 	title := connectTitleStyle.Render("Connect to Neo4j")
-	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).MarginTop(1).Render("Enter to connect • Tab to next field")
+	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).MarginTop(1).
+		Render("Enter to connect • Tab to next field • Ctrl+O to load credentials file")
 
 	block := lipgloss.JoinVertical(lipgloss.Left, title, form, hint)
 

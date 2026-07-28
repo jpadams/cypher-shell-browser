@@ -1,10 +1,14 @@
 # Go Binary
 cypher-shell-browser
 
-# Environment
+# Environment / credentials
 .env
 .env.local
 .env.*.local
+*.env
+
+# Neo4j Aura credentials downloaded on instance creation
+Neo4j-*-Created-*.txt
 
 # IDE
 .idea/
