@@ -141,9 +141,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.queryFocus = true
 		a.query = NewQueryModel(a.client)
 		a.query.SetWidth(a.width)
-		resultH := a.height - 8
-		a.table.SetSize(a.width, resultH)
-		a.graph.SetSize(a.width, resultH)
+		a.setResultSize(a.height - 8)
 		a.statusbar.SetConnected(msg.uri)
 		a.statusbar.SetHints(queryInputHints(false))
 		return a, tea.Batch(a.query.Focus(), uriTickCmd(), loadSchemaCmd(a.client), schemaTickCmd())
@@ -375,12 +373,17 @@ func (a App) View() string {
 }
 
 func (a *App) updateResultSize() {
-	resultH := a.height - a.query.Height() - 1
-	if resultH < 4 {
-		resultH = 4
+	a.setResultSize(a.height - a.query.Height() - 1)
+}
+
+// setResultSize sizes both result views, never handing them a height too small
+// to render a row.
+func (a *App) setResultSize(h int) {
+	if h < minTableHeight {
+		h = minTableHeight
 	}
-	a.table.SetSize(a.width, resultH)
-	a.graph.SetSize(a.width, resultH)
+	a.table.SetSize(a.width, h)
+	a.graph.SetSize(a.width, h)
 }
 
 func (a *App) setResultActive(active bool) {

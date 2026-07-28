@@ -18,6 +18,30 @@ var (
 				BorderForeground(lipgloss.Color("86"))
 )
 
+const (
+	// minTableHeight is the smallest overall height the table view can be given.
+	// Two lines go to the border and one to the header separator, and bubbles'
+	// table then subtracts its own two header lines from what is left, so
+	// anything below this leaves the inner viewport with a negative height —
+	// which panics inside viewport.visibleLines as soon as the table has been
+	// scrolled.  This bites when the query textarea grows and squeezes the
+	// results area.
+	minTableHeight = 6
+	minTableWidth  = 12
+)
+
+// tableDims converts an overall view size into the width and height bubbles'
+// table expects, keeping room for at least one visible row.
+func tableDims(w, h int) (int, int) {
+	if w < minTableWidth {
+		w = minTableWidth
+	}
+	if h < minTableHeight {
+		h = minTableHeight
+	}
+	return w - 2, h - 3 // -2 border, -1 header separator line
+}
+
 type TableViewModel struct {
 	table    table.Model
 	rowPaths [][]n4j.RowPathItem
@@ -38,8 +62,9 @@ func (m *TableViewModel) SetSize(w, h int) {
 	m.width = w
 	m.height = h
 	if m.ready {
-		m.table.SetWidth(w - 2)
-		m.table.SetHeight(h - 3) // -2 border, -1 header separator line
+		tw, th := tableDims(w, h)
+		m.table.SetWidth(tw)
+		m.table.SetHeight(th)
 	}
 }
 
@@ -77,11 +102,13 @@ func (m *TableViewModel) SetResult(result *n4j.QueryResult) {
 		rows[i] = row
 	}
 
+	tw, th := tableDims(m.width, m.height)
+
 	t := table.New(
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithFocused(true),
-		table.WithHeight(m.height-3),
+		table.WithHeight(th),
 	)
 
 	s := table.DefaultStyles()
@@ -97,7 +124,7 @@ func (m *TableViewModel) SetResult(result *n4j.QueryResult) {
 		Bold(false)
 	t.SetStyles(s)
 
-	t.SetWidth(m.width - 2)
+	t.SetWidth(tw)
 	m.table = t
 	m.ready = true
 }
