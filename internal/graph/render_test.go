@@ -5,85 +5,95 @@ import (
 	"testing"
 )
 
-func TestRenderGraph_Chain2(t *testing.T) {
-	g := NewGraph()
-	g.Nodes[1] = &GraphNode{
-		ID:           1,
-		DisplayLabel: ":Person",
-		DisplayProps: []string{"name: 'Neo'"},
+// plain strips ANSI escapes so rendered output can be compared as text.
+func plain(s string) string {
+	var b strings.Builder
+	inEsc := false
+	for _, r := range s {
+		switch {
+		case r == 0x1b:
+			inEsc = true
+		case inEsc && r == 'm':
+			inEsc = false
+		case !inEsc:
+			b.WriteRune(r)
+		}
 	}
-	g.Nodes[2] = &GraphNode{
-		ID:           2,
-		DisplayLabel: ":Movie",
-		DisplayProps: []string{"title: 'The Matrix'"},
-	}
-	g.Edges = []*GraphEdge{
-		{ID: 10, Type: "ACTED_IN", StartID: 1, EndID: 2},
-	}
+	return b.String()
+}
 
-	result := RenderGraph(g)
+func TestRenderCompactNode(t *testing.T) {
+	props := map[string]any{"name": "Neo", "age": 30}
 
-	// Should be inline Cypher-like
-	if !strings.Contains(result, ":Person") {
-		t.Error("should contain :Person label")
+	tests := []struct {
+		name      string
+		labels    []string
+		props     map[string]any
+		verbosity Verbosity
+		want      string
+	}{
+		{"minimal hides props", []string{"Person"}, props, VerbosityMinimal, "(:Person)"},
+		{"medium shows props", []string{"Person"}, props, VerbosityMedium, "(:Person {name: 'Neo', age: 30})"},
+		{"multiple labels", []string{"Person", "Employee"}, nil, VerbosityMedium, "(:Person:Employee)"},
+		{"no labels", nil, nil, VerbosityMedium, "((node))"},
+		{"no props", []string{"Person"}, nil, VerbosityMedium, "(:Person)"},
 	}
-	if !strings.Contains(result, ":Movie") {
-		t.Error("should contain :Movie label")
-	}
-	if !strings.Contains(result, "ACTED_IN") {
-		t.Error("should contain relationship type")
-	}
-	if !strings.Contains(result, "->") {
-		t.Error("should contain arrow syntax")
-	}
-	// Should be on one line
-	lines := strings.Split(result, "\n")
-	if len(lines) != 1 {
-		t.Errorf("compact style should render chain on one line, got %d lines:\n%s", len(lines), result)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := plain(RenderCompactNode(tt.labels, tt.props, tt.verbosity))
+			if got != tt.want {
+				t.Errorf("RenderCompactNode = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
-func TestRenderGraph_CompactChain(t *testing.T) {
-	g := NewGraph()
-	g.Nodes[1] = &GraphNode{ID: 1, DisplayLabel: ":A", DisplayProps: []string{"x: 1"}}
-	g.Nodes[2] = &GraphNode{ID: 2, DisplayLabel: ":B"}
-	g.Nodes[3] = &GraphNode{ID: 3, DisplayLabel: ":C"}
-	g.Edges = []*GraphEdge{
-		{ID: 10, Type: "R1", StartID: 1, EndID: 2},
-		{ID: 11, Type: "R2", StartID: 2, EndID: 3},
-	}
-
-	result := RenderGraph(g)
-
-	// A->B->C should be on one line
-	lines := strings.Split(result, "\n")
-	if len(lines) != 1 {
-		t.Errorf("chain should be one line, got %d:\n%s", len(lines), result)
-	}
-	if !strings.Contains(result, "R1") || !strings.Contains(result, "R2") {
-		t.Error("should contain both relationship types")
+func TestRenderCompactEdge(t *testing.T) {
+	if got, want := plain(RenderCompactEdge("KNOWS", VerbosityMedium)), "-[:KNOWS]->"; got != want {
+		t.Errorf("RenderCompactEdge = %q, want %q", got, want)
 	}
 }
 
-func TestRenderGraph_CompactDisconnected(t *testing.T) {
-	g := NewGraph()
-	g.Nodes[1] = &GraphNode{ID: 1, DisplayLabel: ":A"}
-	g.Nodes[2] = &GraphNode{ID: 2, DisplayLabel: ":B"}
-	// No edges
-
-	result := RenderGraph(g)
-
-	lines := strings.Split(result, "\n")
-	if len(lines) != 2 {
-		t.Errorf("two disconnected nodes should be 2 lines, got %d:\n%s", len(lines), result)
+// The branch variant drops the leading dash, which the tree connector supplies.
+func TestRenderCompactEdgeAfterBranch(t *testing.T) {
+	got := plain(RenderCompactEdgeAfterBranch("KNOWS", VerbosityMedium))
+	if want := "[:KNOWS]->"; got != want {
+		t.Errorf("RenderCompactEdgeAfterBranch = %q, want %q", got, want)
+	}
+	if strings.HasPrefix(got, "-") {
+		t.Errorf("got %q, want no leading dash", got)
 	}
 }
 
-func TestRenderGraph_Empty(t *testing.T) {
-	g := NewGraph()
-	result := RenderGraph(g)
+// The clipboard forms carry no ANSI and no truncation.
+func TestPlainCypherForms(t *testing.T) {
+	node := PlainCypherNode([]string{"Person"}, map[string]any{"name": "O'Brien", "age": 30})
+	if want := `(:Person {name: 'O\'Brien', age: 30})`; node != want {
+		t.Errorf("PlainCypherNode = %q, want %q", node, want)
+	}
+	if node != plain(node) {
+		t.Errorf("PlainCypherNode contains ANSI escapes: %q", node)
+	}
 
-	if !strings.Contains(result, "No graph data") {
-		t.Errorf("expected no graph message, got: %s", result)
+	if got, want := PlainCypherEdge("KNOWS"), "-[:KNOWS]->"; got != want {
+		t.Errorf("PlainCypherEdge = %q, want %q", got, want)
+	}
+
+	bare := PlainCypherNode([]string{"Person"}, nil)
+	if want := "(:Person)"; bare != want {
+		t.Errorf("PlainCypherNode with no props = %q, want %q", bare, want)
+	}
+}
+
+// Only the first three properties are shown, with an ellipsis marker.
+func TestRenderCompactNodeLimitsPropertyCount(t *testing.T) {
+	props := map[string]any{"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}
+
+	got := plain(RenderCompactNode([]string{"N"}, props, VerbosityMedium))
+	if !strings.Contains(got, "...") {
+		t.Errorf("got %q, want an ellipsis marking the elided properties", got)
+	}
+	if strings.Contains(got, "e: 5") {
+		t.Errorf("got %q, want the property list truncated", got)
 	}
 }

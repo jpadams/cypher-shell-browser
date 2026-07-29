@@ -66,6 +66,10 @@ var (
 				Foreground(lipgloss.Color("226"))
 )
 
+// noGraphDataMessage is shown when a result has nodes but no path rows to draw
+// Cypher lines from.
+const noGraphDataMessage = "No graph data to display"
+
 // graphDetailEntry is a single navigable item in the detail panel.
 type graphDetailEntry struct {
 	isHeader   bool
@@ -75,8 +79,6 @@ type graphDetailEntry struct {
 }
 
 type GraphViewModel struct {
-	graph        *graph.Graph
-	warning      string
 	ready        bool
 	active       bool
 	width        int
@@ -127,11 +129,8 @@ func (m *GraphViewModel) SetSize(w, h int) {
 }
 
 func (m *GraphViewModel) SetResult(result *n4j.QueryResult) {
-	g, warning := graph.ExtractGraph(result)
-	m.graph = g
-	m.warning = warning
 	m.rowPaths = result.RowPaths
-	m.ready = len(g.Nodes) > 0
+	m.ready = len(result.Nodes) > 0
 	m.scrollX = 0
 	m.cursor = 0
 	m.scrollY = 0
@@ -169,7 +168,7 @@ func (m *GraphViewModel) renderContent() {
 	case hasRows:
 		content = renderCompactFromRows(m.rowPaths, m.cypherPrefix, m.verbosity)
 	default:
-		content = graph.RenderGraph(m.graph)
+		content = noGraphDataMessage
 	}
 
 	m.lines = strings.Split(content, "\n")
@@ -544,7 +543,7 @@ func (m GraphViewModel) View() string {
 	if !m.ready {
 		return lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245")).
-			Render("No graph data to display")
+			Render(noGraphDataMessage)
 	}
 
 	cypherPane := m.renderCypherPane()
@@ -1134,7 +1133,7 @@ func renderCompactFromRows(rowPaths [][]n4j.RowPathItem, prefix string, v graph.
 		lines = append(lines, sb.String())
 	}
 	if len(lines) == 0 {
-		return "No graph data to display"
+		return noGraphDataMessage
 	}
 	return strings.Join(lines, "\n")
 }

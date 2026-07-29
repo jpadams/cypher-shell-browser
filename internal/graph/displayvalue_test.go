@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
-
-	n4j "github.com/jeremyadams/cypher-shell-browser/internal/neo4j"
 )
 
 // embeddingString mimics a vector stored as a numpy-style string.
@@ -25,23 +23,6 @@ func embeddingList(n int) []any {
 		list[i] = float64(i) / 10000
 	}
 	return list
-}
-
-// stripANSITest removes escape sequences so widths can be measured in the test.
-func stripANSITest(s string) string {
-	var b strings.Builder
-	inEsc := false
-	for _, r := range s {
-		switch {
-		case r == 0x1b:
-			inEsc = true
-		case inEsc && r == 'm':
-			inEsc = false
-		case !inEsc:
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }
 
 func TestDisplayValueCapsLongString(t *testing.T) {
@@ -123,20 +104,12 @@ func TestClipboardKeepsFullValue(t *testing.T) {
 
 // A blob property must not set the width of a rendered line.
 func TestLongPropertyDoesNotBlowUpLineWidth(t *testing.T) {
-	result := &n4j.QueryResult{
-		Nodes: []n4j.ResultNode{{
-			ID:     1,
-			Labels: []string{"Segment"},
-			Properties: map[string]any{
-				"id":        "seg#0",
-				"embedding": embeddingString(1024),
-			},
-		}},
+	props := map[string]any{
+		"id":        "seg#0",
+		"embedding": embeddingString(1024),
 	}
 
-	g, _ := ExtractGraph(result)
-
-	for _, p := range g.Nodes[1].DisplayProps {
+	for _, p := range formatNodeProps(props) {
 		if n := len([]rune(p)); n > MaxDisplayValueLen+40 {
 			t.Errorf("display prop is %d runes: %q", n, p)
 		}
@@ -144,9 +117,8 @@ func TestLongPropertyDoesNotBlowUpLineWidth(t *testing.T) {
 
 	// The live compact/tree rendering path must stay comfortably inside a normal
 	// terminal, rather than running to thousands of columns.
-	node := result.Nodes[0]
-	rendered := RenderCompactNode(node.Labels, node.Properties, VerbosityMedium)
-	if n := len([]rune(stripANSITest(rendered))); n > 200 {
+	rendered := RenderCompactNode([]string{"Segment"}, props, VerbosityMedium)
+	if n := len([]rune(plain(rendered))); n > 200 {
 		t.Errorf("rendered node is %d runes, want it bounded: %q", n, rendered)
 	}
 }

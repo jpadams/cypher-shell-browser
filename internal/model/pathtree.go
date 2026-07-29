@@ -114,7 +114,7 @@ type treeLine struct {
 func renderPathTree(rowPaths [][]n4j.RowPathItem, v graph.Verbosity) (string, [][]int) {
 	root := buildPathTree(rowPaths)
 	if len(root.children) == 0 {
-		return "No graph data to display", [][]int{nil}
+		return noGraphDataMessage, [][]int{nil}
 	}
 
 	var collected []treeLine

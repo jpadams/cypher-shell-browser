@@ -70,11 +70,22 @@ func TestGraphViewSurvivesShrinking(t *testing.T) {
 			{ID: 11, Type: "WORKS_AT", StartID: 1, EndID: 3},
 		},
 	}
+	// A real result always carries the row paths alongside the nodes, and the
+	// graph view renders from those.
+	alice := n4j.RowPathItem{IsNode: true, ID: 1, Labels: []string{"Person"}, Properties: map[string]any{"name": "Alice", "city": "Malmö"}}
+	result.RowPaths = [][]n4j.RowPathItem{
+		{alice, n4j.RowPathItem{Type: "KNOWS"}, n4j.RowPathItem{IsNode: true, ID: 2, Labels: []string{"Person"}, Properties: map[string]any{"name": "Bob"}}},
+		{alice, n4j.RowPathItem{Type: "WORKS_AT"}, n4j.RowPathItem{IsNode: true, ID: 3, Labels: []string{"Company"}, Properties: map[string]any{"name": "Acme Corp"}}},
+	}
 
 	m := NewGraphViewModel()
 	m.SetSize(80, 24)
 	m.SetResult(result)
 	m.active = true
+
+	if !m.isDataLine(m.cursor) {
+		t.Fatal("expected the graph view to render selectable rows")
+	}
 
 	for i := 0; i < 5; i++ {
 		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
