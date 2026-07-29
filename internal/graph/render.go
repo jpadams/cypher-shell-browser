@@ -206,6 +206,12 @@ func RenderCompactEdge(relType string, v Verbosity) string {
 	return edgeStyle.Render("-") + edgeLabelStyle.Render(label) + edgeStyle.Render("->")
 }
 
+// RenderCompactEdgeAfterBranch renders a relationship without its leading dash,
+// for use where a tree branch connector already draws the horizontal stroke.
+func RenderCompactEdgeAfterBranch(relType string, v Verbosity) string {
+	return edgeLabelStyle.Render(fmt.Sprintf("[:%s]", relType)) + edgeStyle.Render("->")
+}
+
 // PlainCypherNode returns a plain-text Cypher representation of a node (no ANSI).
 func PlainCypherNode(labels []string, props map[string]any) string {
 	label := formatNodeLabel(labels)

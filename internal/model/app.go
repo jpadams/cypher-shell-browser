@@ -270,10 +270,26 @@ func (a *App) resultHints() []StatusHint {
 		} else {
 			hints = append(hints, StatusHint{Key: "v", Desc: "verbosity", Active: true})
 		}
+		if a.graph.tree {
+			hints = append(hints, StatusHint{Key: "t", Desc: "rows", Active: true})
+			if n := len(a.graph.variantRows()); n > 1 {
+				hints = append(hints, StatusHint{
+					Key:    "Tab",
+					Desc:   fmt.Sprintf("variant %d/%d", a.graph.variant+1, n),
+					Active: true,
+				})
+			}
+		} else {
+			hints = append(hints, StatusHint{Key: "t", Desc: "tree", Active: true})
+		}
 		hints = append(hints,
 			StatusHint{Key: "Ctrl+Y", Desc: "copy row", Active: true},
 			StatusHint{Key: "Ctrl+A", Desc: "copy all", Active: true},
-			StatusHint{Key: "m/c", Desc: "MERGE/CREATE", Active: true},
+		)
+		if !a.graph.tree {
+			hints = append(hints, StatusHint{Key: "m/c", Desc: "MERGE/CREATE", Active: true})
+		}
+		hints = append(hints,
 			StatusHint{Key: "Esc", Desc: "query", Active: true},
 			StatusHint{Key: "?", Desc: "help", Active: true},
 		)

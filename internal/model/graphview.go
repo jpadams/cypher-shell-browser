@@ -86,12 +86,18 @@ type GraphViewModel struct {
 	maxLineLen   int
 	rowPaths     [][]n4j.RowPathItem
 	cypherPrefix string
+	tree         bool // collapse rows into a shape tree instead of one row per line
 
 	// Line-based rendering
 	lines     []string // rendered Cypher lines (styled)
 	lineToRow []int    // maps line index -> rowPaths index (-1 = non-data line)
 	cursor    int      // selected line index
 	scrollY   int      // vertical scroll offset
+
+	// Tree view: one line stands for many rows, so each line carries the full
+	// set and `variant` selects which of them the detail panel and copy show.
+	lineRows [][]int
+	variant  int
 
 	// Detail panel
 	showDetail   bool
@@ -166,10 +172,18 @@ func (m *GraphViewModel) ToggleStyle() {
 }
 
 func (m *GraphViewModel) renderContent() {
+	hasRows := m.style == graph.StyleCompact && len(m.rowPaths) > 0
+
 	var content string
-	if m.style == graph.StyleCompact && len(m.rowPaths) > 0 {
+	var treeRows [][]int
+	switch {
+	case hasRows && m.tree:
+		// Each tree line stands for many rows, so the renderer supplies the
+		// rows per line rather than the 1:1 mapping below.
+		content, treeRows = renderPathTree(m.rowPaths, m.verbosity)
+	case hasRows:
 		content = renderCompactFromRows(m.rowPaths, m.cypherPrefix, m.verbosity)
-	} else {
+	default:
 		content = graph.RenderGraph(m.graph, m.style)
 	}
 
@@ -178,7 +192,19 @@ func (m *GraphViewModel) renderContent() {
 	// Build lineToRow mapping: in compact mode each rendered line maps
 	// 1:1 to the non-empty rowPaths entries. Other lines are -1.
 	m.lineToRow = make([]int, len(m.lines))
-	if m.style == graph.StyleCompact && len(m.rowPaths) > 0 {
+	m.lineRows = treeRows
+	m.variant = 0
+	switch {
+	case treeRows != nil:
+		// lineToRow keeps the first row of each line, so everything built on it
+		// (cursor validity, copy fallbacks) behaves as in the rows view.
+		for i := range m.lines {
+			m.lineToRow[i] = -1
+			if i < len(treeRows) && len(treeRows[i]) > 0 {
+				m.lineToRow[i] = treeRows[i][0]
+			}
+		}
+	case hasRows:
 		rowIdx := 0
 		for i := range m.lines {
 			// renderCompactFromRows skips empty paths, so advance rowIdx
@@ -193,7 +219,7 @@ func (m *GraphViewModel) renderContent() {
 				m.lineToRow[i] = -1
 			}
 		}
-	} else {
+	default:
 		for i := range m.lines {
 			m.lineToRow[i] = -1
 		}
@@ -253,12 +279,57 @@ func (m *GraphViewModel) clampCursor() {
 	}
 }
 
+// variantRows returns the result rows the cursor's line stands for.  In the
+// rows view that is the single row on the line; in the tree view it is every
+// row sharing that line's shape.
+func (m GraphViewModel) variantRows() []int {
+	if !m.isDataLine(m.cursor) {
+		return nil
+	}
+	if m.lineRows != nil && m.cursor < len(m.lineRows) {
+		return m.lineRows[m.cursor]
+	}
+	return []int{m.lineToRow[m.cursor]}
+}
+
+// currentRow is the result row the detail panel and copy act on, honouring the
+// selected variant.
+func (m GraphViewModel) currentRow() int {
+	rows := m.variantRows()
+	if len(rows) == 0 {
+		return -1
+	}
+	idx := m.variant
+	if idx < 0 || idx >= len(rows) {
+		idx = 0
+	}
+	return rows[idx]
+}
+
+// cycleVariant steps to another row behind the current line.
+func (m *GraphViewModel) cycleVariant(delta int) bool {
+	n := len(m.variantRows())
+	if n <= 1 {
+		return false
+	}
+	// Cycling is for comparing the same thing across variants, so hold the
+	// panel's position instead of snapping back to the top.
+	anchor := m.captureDetailAnchor()
+	m.variant = ((m.variant+delta)%n + n) % n
+	if m.showDetail {
+		m.updateDetail()
+		m.restoreDetailAnchor(anchor)
+	}
+	return true
+}
+
 // moveCursor moves the cursor by delta, skipping non-data lines.
 func (m *GraphViewModel) moveCursor(delta int) {
 	cur := m.cursor + delta
 	for cur >= 0 && cur < len(m.lines) {
 		if m.isDataLine(cur) {
 			m.cursor = cur
+			m.variant = 0
 			m.ensureCursorVisible()
 			if m.showDetail {
 				m.updateDetail()
@@ -324,7 +395,7 @@ func (m GraphViewModel) Update(msg tea.Msg) (GraphViewModel, tea.Cmd) {
 			}
 
 		case "m":
-			if !m.detailFocus {
+			if !m.detailFocus && !m.tree {
 				if m.cypherPrefix == "MERGE " {
 					m.cypherPrefix = ""
 				} else {
@@ -335,7 +406,7 @@ func (m GraphViewModel) Update(msg tea.Msg) (GraphViewModel, tea.Cmd) {
 			}
 
 		case "c":
-			if !m.detailFocus {
+			if !m.detailFocus && !m.tree {
 				if m.cypherPrefix == "CREATE " {
 					m.cypherPrefix = ""
 				} else {
@@ -364,6 +435,29 @@ func (m GraphViewModel) Update(msg tea.Msg) (GraphViewModel, tea.Cmd) {
 				m.ensureDetailPropVisible()
 			}
 			return m, nil
+
+		case "tab":
+			if m.cycleVariant(1) {
+				return m, nil
+			}
+
+		case "shift+tab":
+			if m.cycleVariant(-1) {
+				return m, nil
+			}
+
+		case "t":
+			if !m.detailFocus {
+				m.tree = !m.tree
+				// The MERGE/CREATE prefix belongs to copyable per-row Cypher,
+				// not to a shape summary.
+				if m.tree {
+					m.cypherPrefix = ""
+				}
+				m.scrollX = 0
+				m.renderContent()
+				return m, nil
+			}
 
 		case "v", "V":
 			if m.showDetail {
@@ -556,10 +650,7 @@ func (m *GraphViewModel) updateDetail() {
 	m.detailScroll = 0
 	m.entries = nil
 
-	if !m.isDataLine(m.cursor) {
-		return
-	}
-	rowIdx := m.lineToRow[m.cursor]
+	rowIdx := m.currentRow()
 	if rowIdx < 0 || rowIdx >= len(m.rowPaths) || len(m.rowPaths[rowIdx]) == 0 {
 		return
 	}
@@ -593,6 +684,99 @@ func (m *GraphViewModel) updateDetail() {
 			m.propCursor = i
 			break
 		}
+	}
+}
+
+// detailAnchor marks a place in the detail panel by what it refers to — which
+// node or relationship of the path, and which property within it — rather than
+// by line offset.  Variants of the same shape can carry different property sets,
+// so a raw offset would drift; naming the position keeps you on the same
+// relationship or property while cycling.
+type detailAnchor struct {
+	itemIdx  int    // ordinal of the node/relationship header, -1 if none
+	propName string // property label under the cursor; "" means the header line
+	expanded bool   // whether that entry was expanded
+	scroll   int    // fallback offset when there is nothing to anchor to
+}
+
+// captureDetailAnchor records where the detail panel is currently pointing.
+func (m GraphViewModel) captureDetailAnchor() detailAnchor {
+	anchor := detailAnchor{itemIdx: -1, scroll: m.detailScroll}
+	if m.propCursor < 0 || m.propCursor >= len(m.entries) {
+		return anchor
+	}
+
+	item := -1
+	for i := 0; i <= m.propCursor; i++ {
+		if m.entries[i].isHeader {
+			item++
+		}
+	}
+	anchor.itemIdx = item
+	if !m.entries[m.propCursor].isHeader {
+		anchor.propName = m.entries[m.propCursor].label
+	}
+	anchor.expanded = m.expandedProp == m.propCursor
+	return anchor
+}
+
+// restoreDetailAnchor moves the detail panel back to an anchored position after
+// the entries have been rebuilt.  It falls back to the same path item's header,
+// then to the top, when the anchored property is absent from this variant.
+func (m *GraphViewModel) restoreDetailAnchor(anchor detailAnchor) {
+	if anchor.itemIdx < 0 || len(m.entries) == 0 {
+		m.detailScroll = anchor.scroll
+		m.clampDetailScroll()
+		return
+	}
+
+	start, item := -1, -1
+	for i, e := range m.entries {
+		if !e.isHeader {
+			continue
+		}
+		item++
+		if item == anchor.itemIdx {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return // this variant has no such item; leave the fresh position alone
+	}
+
+	target := start
+	if anchor.propName != "" {
+		for i := start + 1; i < len(m.entries) && !m.entries[i].isHeader; i++ {
+			if m.entries[i].label == anchor.propName {
+				target = i
+				break
+			}
+		}
+	}
+
+	m.propCursor = target
+	if anchor.expanded && !m.entries[target].isHeader {
+		m.expandedProp = target
+	}
+	m.ensureDetailPropVisible()
+}
+
+// clampDetailScroll keeps the scroll offset within the rendered content.
+func (m *GraphViewModel) clampDetailScroll() {
+	total := 0
+	for i := range m.entries {
+		total += m.detailEntryLineCount(i)
+	}
+	max := total - m.detailVisibleLines()
+	if max < 0 {
+		max = 0
+	}
+	if m.detailScroll > max {
+		m.detailScroll = max
+	}
+	if m.detailScroll < 0 {
+		m.detailScroll = 0
 	}
 }
 
@@ -650,7 +834,25 @@ func graphFormatPropValue(v any) string {
 }
 
 func (m *GraphViewModel) detailVisibleLines() int {
-	return m.height - 4
+	vis := m.height - 4
+	if m.variantHeader() != "" {
+		vis-- // the variant header is pinned and does not scroll
+	}
+	return vis
+}
+
+// variantHeader labels which of a line's rows the detail panel is showing, and
+// is empty when the line stands for a single row.
+func (m GraphViewModel) variantHeader() string {
+	rows := m.variantRows()
+	if len(rows) <= 1 {
+		return ""
+	}
+	idx := m.variant
+	if idx < 0 || idx >= len(rows) {
+		idx = 0
+	}
+	return graphDetailDimStyle.Render(fmt.Sprintf("variant %d of %d · Tab", idx+1, len(rows)))
 }
 
 func (m *GraphViewModel) ensureDetailPropVisible() {
@@ -783,6 +985,9 @@ func (m GraphViewModel) renderDetailContent() string {
 	}
 
 	visible := allLines[start:end]
+	if header := m.variantHeader(); header != "" {
+		visible = append([]string{header}, visible...)
+	}
 	return strings.Join(visible, "\n")
 }
 
@@ -886,10 +1091,7 @@ func (m GraphViewModel) plainCypherText() string {
 
 // plainCypherRow returns the plain Cypher for the row under the cursor.
 func (m GraphViewModel) plainCypherRow() string {
-	if !m.isDataLine(m.cursor) {
-		return ""
-	}
-	rowIdx := m.lineToRow[m.cursor]
+	rowIdx := m.currentRow()
 	if rowIdx < 0 || rowIdx >= len(m.rowPaths) {
 		return ""
 	}
