@@ -9,26 +9,18 @@ import (
 )
 
 var (
-	nodeBorderStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("86"))  // cyan
 	nodeLabelStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("255"))
-	nodePropStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // dim
 	edgeStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("226")) // yellow
 	edgeLabelStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true)
 	compactParenStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("86"))
 	compactPropStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 )
 
-func RenderGraph(g *Graph, style RenderStyle) string {
+func RenderGraph(g *Graph) string {
 	if len(g.Nodes) == 0 {
 		return "No graph data to display"
 	}
-
-	switch style {
-	case StyleCompact:
-		return renderCompact(g)
-	default:
-		return renderDetailed(g)
-	}
+	return renderCompact(g)
 }
 
 // renderCompact renders the graph as inline Cypher-like paths.
@@ -227,192 +219,6 @@ func PlainCypherEdge(relType string) string {
 	return fmt.Sprintf("-[:%s]->", relType)
 }
 
-// renderDetailed renders the graph using canvas with Unicode box nodes and edge routing.
-func renderDetailed(g *Graph) string {
-	Layout(g, StyleDetailed)
-
-	// Calculate canvas size
-	maxX, maxY := 0, 0
-	for _, node := range g.Nodes {
-		right := node.X + node.Width
-		bottom := node.Y + node.Height
-		if right > maxX {
-			maxX = right
-		}
-		if bottom > maxY {
-			maxY = bottom
-		}
-	}
-
-	canvasW := maxX + 10
-	canvasH := maxY + 2
-
-	canvas := NewCanvas(canvasW, canvasH)
-
-	// Draw edges first (behind nodes)
-	for _, edge := range g.Edges {
-		drawDetailedEdge(canvas, g, edge)
-	}
-
-	// Draw nodes on top
-	for _, node := range g.Nodes {
-		drawDetailedNode(canvas, node)
-	}
-
-	return canvas.Render()
-}
-
-func drawDetailedNode(c *Canvas, node *GraphNode) {
-	x, y := node.X, node.Y
-	w := node.Width
-
-	// Top border: ╭────╮
-	c.Set(x, y, '╭', nodeBorderStyle)
-	for i := 1; i < w-1; i++ {
-		c.Set(x+i, y, '─', nodeBorderStyle)
-	}
-	c.Set(x+w-1, y, '╮', nodeBorderStyle)
-
-	// Label row
-	y++
-	c.Set(x, y, '│', nodeBorderStyle)
-	label := centerString(node.DisplayLabel, w-2)
-	c.SetString(x+1, y, label, nodeLabelStyle)
-	c.Set(x+w-1, y, '│', nodeBorderStyle)
-
-	// Property rows
-	for _, prop := range node.DisplayProps {
-		y++
-		c.Set(x, y, '│', nodeBorderStyle)
-		pstr := padRight(prop, w-2)
-		if len(pstr) > w-2 {
-			pstr = pstr[:w-2]
-		}
-		c.SetString(x+1, y, pstr, nodePropStyle)
-		c.Set(x+w-1, y, '│', nodeBorderStyle)
-	}
-
-	// Bottom border: ╰────╯
-	y++
-	c.Set(x, y, '╰', nodeBorderStyle)
-	for i := 1; i < w-1; i++ {
-		c.Set(x+i, y, '─', nodeBorderStyle)
-	}
-	c.Set(x+w-1, y, '╯', nodeBorderStyle)
-}
-
-func drawDetailedEdge(c *Canvas, g *Graph, edge *GraphEdge) {
-	startNode := g.Nodes[edge.StartID]
-	endNode := g.Nodes[edge.EndID]
-	if startNode == nil || endNode == nil {
-		return
-	}
-
-	label := fmt.Sprintf("[:%s]", edge.Type)
-
-	if startNode.Layer == endNode.Layer {
-		// Same layer: horizontal connection from right side of start to left side of end
-		var left, right *GraphNode
-		if startNode.X < endNode.X {
-			left, right = startNode, endNode
-		} else {
-			left, right = endNode, startNode
-		}
-		sx := left.X + left.Width
-		ex := right.X
-		y := left.Y + left.Height/2
-
-		// Draw horizontal line
-		for x := sx; x < ex; x++ {
-			c.Set(x, y, '─', edgeStyle)
-		}
-		// Arrowhead pointing toward endNode
-		if startNode.X < endNode.X {
-			c.Set(ex-1, y, '▶', edgeStyle)
-		} else {
-			c.Set(sx, y, '◀', edgeStyle)
-		}
-		// Label at midpoint above the line
-		mid := (sx + ex) / 2
-		labelStart := mid - len(label)/2
-		if labelStart < sx {
-			labelStart = sx
-		}
-		c.SetString(labelStart, y-1, label, edgeLabelStyle)
-	} else {
-		// Different layers: vertical connection
-		// Start from bottom-center of start node, end at top-center of end node
-		sx := startNode.X + startNode.Width/2
-		sy := startNode.Y + startNode.Height // one below bottom border
-		ex := endNode.X + endNode.Width/2
-		ey := endNode.Y - 1 // one above top border
-
-		if sy >= ey {
-			// Not enough space, just draw arrow
-			c.Set(ex, endNode.Y-1, '▼', edgeStyle)
-			return
-		}
-
-		// Place label in the middle of the vertical span
-		midY := (sy + ey) / 2
-
-		if sx == ex {
-			// Straight vertical line
-			for y := sy; y <= ey; y++ {
-				c.Set(sx, y, '│', edgeStyle)
-			}
-			// Arrowhead at bottom
-			c.Set(ex, ey, '▼', edgeStyle)
-			// Label to the right of the line at midpoint
-			c.SetString(sx+1, midY, label, edgeLabelStyle)
-		} else {
-			// L-shaped or Z-shaped routing
-			// Go down from start to midY, horizontal to ex, then down to end
-
-			// Vertical segment from start down to midY
-			for y := sy; y <= midY; y++ {
-				c.Set(sx, y, '│', edgeStyle)
-			}
-
-			// Horizontal segment from sx to ex at midY
-			minX, maxX := sx, ex
-			if minX > maxX {
-				minX, maxX = maxX, minX
-			}
-			for x := minX; x <= maxX; x++ {
-				c.Set(x, midY, '─', edgeStyle)
-			}
-
-			// Corners
-			if ex > sx {
-				c.Set(sx, midY, '╰', edgeStyle)
-				c.Set(ex, midY, '╮', edgeStyle)
-			} else {
-				c.Set(sx, midY, '╯', edgeStyle)
-				c.Set(ex, midY, '╭', edgeStyle)
-			}
-
-			// Vertical segment from midY down to end
-			for y := midY + 1; y <= ey; y++ {
-				c.Set(ex, y, '│', edgeStyle)
-			}
-
-			// Arrowhead
-			c.Set(ex, ey, '▼', edgeStyle)
-
-			// Label along the horizontal segment
-			labelX := minX + 1
-			if labelX+len(label) > maxX {
-				labelX = maxX - len(label)
-			}
-			if labelX < minX+1 {
-				labelX = minX + 1
-			}
-			c.SetString(labelX, midY-1, label, edgeLabelStyle)
-		}
-	}
-}
-
 func sortedNodeIDs(g *Graph) []int64 {
 	ids := make([]int64, 0, len(g.Nodes))
 	for id := range g.Nodes {
@@ -420,29 +226,4 @@ func sortedNodeIDs(g *Graph) []int64 {
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	return ids
-}
-
-func centerString(s string, width int) string {
-	if len(s) >= width {
-		return s[:width]
-	}
-	pad := (width - len(s)) / 2
-	result := make([]byte, width)
-	for i := range result {
-		result[i] = ' '
-	}
-	copy(result[pad:], s)
-	return string(result)
-}
-
-func padRight(s string, width int) string {
-	if len(s) >= width {
-		return s
-	}
-	result := make([]byte, width)
-	for i := range result {
-		result[i] = ' '
-	}
-	copy(result, s)
-	return string(result)
 }

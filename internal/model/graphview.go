@@ -76,7 +76,6 @@ type graphDetailEntry struct {
 
 type GraphViewModel struct {
 	graph        *graph.Graph
-	style        graph.RenderStyle
 	warning      string
 	ready        bool
 	active       bool
@@ -113,7 +112,6 @@ type GraphViewModel struct {
 
 func NewGraphViewModel() GraphViewModel {
 	return GraphViewModel{
-		style:        graph.StyleCompact,
 		propCursor:   -1,
 		expandedProp: -1,
 		verbosity:    graph.VerbosityMedium,
@@ -158,21 +156,8 @@ func (m *GraphViewModel) ResetPrefix() {
 	}
 }
 
-func (m *GraphViewModel) ToggleStyle() {
-	if m.style == graph.StyleDetailed {
-		m.style = graph.StyleCompact
-	} else {
-		m.style = graph.StyleDetailed
-		m.cypherPrefix = ""
-	}
-	m.scrollX = 0
-	if m.ready {
-		m.renderContent()
-	}
-}
-
 func (m *GraphViewModel) renderContent() {
-	hasRows := m.style == graph.StyleCompact && len(m.rowPaths) > 0
+	hasRows := len(m.rowPaths) > 0
 
 	var content string
 	var treeRows [][]int
@@ -184,7 +169,7 @@ func (m *GraphViewModel) renderContent() {
 	case hasRows:
 		content = renderCompactFromRows(m.rowPaths, m.cypherPrefix, m.verbosity)
 	default:
-		content = graph.RenderGraph(m.graph, m.style)
+		content = graph.RenderGraph(m.graph)
 	}
 
 	m.lines = strings.Split(content, "\n")

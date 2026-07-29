@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestRenderGraph_DetailedStyle(t *testing.T) {
+func TestRenderGraph_Chain2(t *testing.T) {
 	g := NewGraph()
 	g.Nodes[1] = &GraphNode{
 		ID:           1,
@@ -21,45 +21,7 @@ func TestRenderGraph_DetailedStyle(t *testing.T) {
 		{ID: 10, Type: "ACTED_IN", StartID: 1, EndID: 2},
 	}
 
-	result := RenderGraph(g, StyleDetailed)
-
-	if !strings.Contains(result, ":Person") {
-		t.Error("should contain :Person label")
-	}
-	if !strings.Contains(result, ":Movie") {
-		t.Error("should contain :Movie label")
-	}
-	if !strings.Contains(result, "name: 'Neo'") {
-		t.Error("should contain name: 'Neo' property")
-	}
-	if !strings.Contains(result, "╭") {
-		t.Error("should contain box drawing characters")
-	}
-	if !strings.Contains(result, "ACTED_IN") {
-		t.Error("should contain edge label")
-	}
-	if !strings.Contains(result, "▼") {
-		t.Error("should contain arrow for vertical edge")
-	}
-}
-
-func TestRenderGraph_CompactStyle(t *testing.T) {
-	g := NewGraph()
-	g.Nodes[1] = &GraphNode{
-		ID:           1,
-		DisplayLabel: ":Person",
-		DisplayProps: []string{"name: 'Neo'"},
-	}
-	g.Nodes[2] = &GraphNode{
-		ID:           2,
-		DisplayLabel: ":Movie",
-		DisplayProps: []string{"title: 'The Matrix'"},
-	}
-	g.Edges = []*GraphEdge{
-		{ID: 10, Type: "ACTED_IN", StartID: 1, EndID: 2},
-	}
-
-	result := RenderGraph(g, StyleCompact)
+	result := RenderGraph(g)
 
 	// Should be inline Cypher-like
 	if !strings.Contains(result, ":Person") {
@@ -91,7 +53,7 @@ func TestRenderGraph_CompactChain(t *testing.T) {
 		{ID: 11, Type: "R2", StartID: 2, EndID: 3},
 	}
 
-	result := RenderGraph(g, StyleCompact)
+	result := RenderGraph(g)
 
 	// A->B->C should be on one line
 	lines := strings.Split(result, "\n")
@@ -109,7 +71,7 @@ func TestRenderGraph_CompactDisconnected(t *testing.T) {
 	g.Nodes[2] = &GraphNode{ID: 2, DisplayLabel: ":B"}
 	// No edges
 
-	result := RenderGraph(g, StyleCompact)
+	result := RenderGraph(g)
 
 	lines := strings.Split(result, "\n")
 	if len(lines) != 2 {
@@ -119,19 +81,9 @@ func TestRenderGraph_CompactDisconnected(t *testing.T) {
 
 func TestRenderGraph_Empty(t *testing.T) {
 	g := NewGraph()
-	result := RenderGraph(g, StyleDetailed)
+	result := RenderGraph(g)
 
 	if !strings.Contains(result, "No graph data") {
 		t.Errorf("expected no graph message, got: %s", result)
-	}
-}
-
-func TestCanvas_SetAndRender(t *testing.T) {
-	c := NewCanvas(5, 3)
-	c.SetString(0, 0, "Hello", nodeLabelStyle)
-
-	result := c.Render()
-	if !strings.Contains(result, "H") {
-		t.Error("canvas should contain set characters")
 	}
 }

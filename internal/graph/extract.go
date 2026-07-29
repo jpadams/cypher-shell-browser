@@ -59,7 +59,7 @@ func formatNodeProps(props map[string]any) []string {
 	// Show name/title first if present
 	for _, key := range []string{"name", "title", "id"} {
 		if v, ok := props[key]; ok {
-			result = append(result, fmt.Sprintf("%s: %s", key, cypherValue(v)))
+			result = append(result, fmt.Sprintf("%s: %s", key, displayValue(v)))
 		}
 	}
 	keys := make([]string, 0, len(props))
@@ -70,7 +70,7 @@ func formatNodeProps(props map[string]any) []string {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		result = append(result, fmt.Sprintf("%s: %s", k, cypherValue(props[k])))
+		result = append(result, fmt.Sprintf("%s: %s", k, displayValue(props[k])))
 	}
 	// Limit displayed props
 	if len(result) > 3 {
@@ -102,6 +102,50 @@ func formatAllNodeProps(props map[string]any) []string {
 		result = append(result, fmt.Sprintf("%s: %s", k, cypherValue(props[k])))
 	}
 	return result
+}
+
+// MaxDisplayValueLen bounds a single property value in the summary views. A
+// vector embedding or other blob otherwise decides the width of a node box or a
+// compact line, pushing everything else off screen.
+const MaxDisplayValueLen = 40
+
+// displayValue renders a property value for the summary views, bounded in
+// length. Long lists are summarised by their size rather than truncated
+// mid-number, since the first few components of an embedding tell you nothing.
+// Clipboard copies go through cypherValue and stay faithful.
+func displayValue(v any) string {
+	if list, ok := v.([]any); ok {
+		if s := cypherValue(v); len([]rune(s)) <= MaxDisplayValueLen {
+			return s
+		}
+		return fmt.Sprintf("[%d values]", len(list))
+	}
+	return truncateDisplayValue(cypherValue(v), MaxDisplayValueLen)
+}
+
+// truncateDisplayValue shortens a rendered value, keeping a quoted literal's
+// quotes balanced so the result still reads as a value rather than a fragment.
+func truncateDisplayValue(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if len(r) > 1 && r[0] == '\'' && r[len(r)-1] == '\'' {
+		inner := r[1 : len(r)-1]
+		keep := max - 3 // two quotes and the ellipsis
+		if keep < 1 {
+			keep = 1
+		}
+		if keep > len(inner) {
+			keep = len(inner)
+		}
+		return "'" + string(inner[:keep]) + "…'"
+	}
+	keep := max - 1
+	if keep < 1 {
+		keep = 1
+	}
+	return string(r[:keep]) + "…"
 }
 
 func cypherValue(v any) string {
