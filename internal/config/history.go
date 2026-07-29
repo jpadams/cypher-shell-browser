@@ -7,9 +7,9 @@ import (
 )
 
 const (
-	historyFile      = ".cypher-shell-browser_history"
-	maxHistorySize   = 500
-	entrySeparator   = "\x00---ENTRY---\x00"
+	historyFile    = ".cypher-shell-browser_history"
+	maxHistorySize = 500
+	entrySeparator = "\x00---ENTRY---\x00"
 )
 
 func HistoryPath() string {

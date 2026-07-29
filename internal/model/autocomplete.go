@@ -35,11 +35,11 @@ var (
 )
 
 type AutocompleteModel struct {
-	visible  bool
-	items    []string
-	selected int
-	prefix   string
-	context  completionContext
+	visible      bool
+	items        []string
+	selected     int
+	prefix       string
+	context      completionContext
 	labels       []string
 	relTypes     []string
 	labelProps   map[string][]string

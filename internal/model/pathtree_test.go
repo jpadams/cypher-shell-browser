@@ -174,7 +174,7 @@ func TestPathTreeRepresentativeRowsMatchTheirLine(t *testing.T) {
 	rows := videoRows()
 	_, lineRows := plainTreeLines(t, rows)
 
-	wantLen := []int{3, 5, 5, 5, 7, 7}    // path item counts per tree line
+	wantLen := []int{3, 5, 5, 5, 7, 7}        // path item counts per tree line
 	wantCount := []int{2, 120, 88, 38, 20, 1} // rows behind each tree line
 	if len(lineRows) != len(wantLen) {
 		t.Fatalf("got %d line row sets, want %d", len(lineRows), len(wantLen))

@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	uriFixedLen  = 18 // always-visible prefix length
-	uriCycleLen  = 5  // cycling suffix window size
+	uriFixedLen  = 18                        // always-visible prefix length
+	uriCycleLen  = 5                         // cycling suffix window size
 	uriThreshold = uriFixedLen + uriCycleLen // 23; only cycle if URI > this
 )
 
@@ -75,11 +75,11 @@ type StatusBar struct {
 	loading   bool
 
 	// URI cycling state
-	phase     uriPhase
-	tailOff   int // current offset into tail for the 4-char window
+	phase   uriPhase
+	tailOff int // current offset into tail for the 4-char window
 
 	// Error scroll state
-	errOffset int  // current scroll offset into error message
+	errOffset  int  // current scroll offset into error message
 	errTicking bool // whether the error scroll ticker is active
 }
 

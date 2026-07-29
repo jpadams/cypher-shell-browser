@@ -22,17 +22,17 @@ const (
 )
 
 type App struct {
-	cfg       *config.Config
-	client    *n4j.Client
-	state     appState
-	connect   ConnectModel
-	query     QueryModel
-	table     TableViewModel
-	graph     GraphViewModel
-	statusbar StatusBar
-	help      HelpModel
-	width     int
-	height    int
+	cfg        *config.Config
+	client     *n4j.Client
+	state      appState
+	connect    ConnectModel
+	query      QueryModel
+	table      TableViewModel
+	graph      GraphViewModel
+	statusbar  StatusBar
+	help       HelpModel
+	width      int
+	height     int
 	hasResult  bool
 	showHelp   bool
 	queryFocus bool // true when query textarea has focus

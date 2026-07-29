@@ -14,44 +14,44 @@ import (
 
 var (
 	graphBorderStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("86"))
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("86"))
 
 	graphBorderDimStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240"))
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("240"))
 
 	graphDetailBorderStyle = lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240"))
+				BorderStyle(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("240"))
 
 	graphDetailBorderFocusedStyle = lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("86"))
+					BorderStyle(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("86"))
 
 	graphSelectedStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("255")).
-		Background(lipgloss.Color("62"))
+				Foreground(lipgloss.Color("255")).
+				Background(lipgloss.Color("62"))
 
 	graphDetailTitleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("86"))
+				Bold(true).
+				Foreground(lipgloss.Color("86"))
 
 	graphDetailKeyStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("86"))
+				Foreground(lipgloss.Color("86"))
 
 	graphDetailKeySelectedStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("255")).
-		Background(lipgloss.Color("62"))
+					Foreground(lipgloss.Color("255")).
+					Background(lipgloss.Color("62"))
 
 	graphDetailValTruncStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+					Foreground(lipgloss.Color("245"))
 
 	graphDetailValStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("252"))
+				Foreground(lipgloss.Color("252"))
 
 	graphDetailDimStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245"))
+				Foreground(lipgloss.Color("245"))
 
 	graphDetailInternalKeyStyle = lipgloss.NewStyle().
 					Foreground(lipgloss.Color("243")).
@@ -62,8 +62,8 @@ var (
 					Italic(true)
 
 	cypherPrefixStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("226"))
+				Bold(true).
+				Foreground(lipgloss.Color("226"))
 )
 
 // graphDetailEntry is a single navigable item in the detail panel.
