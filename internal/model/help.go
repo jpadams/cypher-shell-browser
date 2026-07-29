@@ -61,7 +61,7 @@ func (m HelpModel) View() string {
 
 		helpSectionStyle.Render("Connect"),
 		helpLine("Tab / ↑↓", "Move between fields"),
-		helpLine("Ctrl+O", "Load credentials file (.env or Aura .txt)"),
+		helpLine("Ctrl+O", "Load / cycle credentials files, recent first"),
 		helpLine("Enter", "Connect"),
 
 		helpSectionStyle.Render("Query Input"),

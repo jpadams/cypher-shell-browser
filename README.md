@@ -79,10 +79,20 @@ everything but `NEO4J_*` is ignored. `NEO4J_USER`, `NEO4J_URL`, and
 `NEO4J_BOLT_URL` are accepted as aliases. `NEO4J_DATABASE` is optional — it is
 inferred from the URI when absent.
 
-You can also load a file from the connect screen: type or paste a path into the
-**Cred file** field and press Enter, or press **Ctrl+O** to load the file the
-current directory offers (an `Neo4j-…-Created-….txt` if present, otherwise
-`.env`), whose name is shown as the field's placeholder.
+You can also load a file from the connect screen. Type or paste a path into the
+**Cred file** field and press Enter, or press **Ctrl+O** to work through the
+credentials files in the current directory — Aura `.txt` downloads and `.env`
+files alike, **most recently used first**, wrapping around at the end. Each
+press names the file it filled the fields from in the status bar, along with its
+position (`2 of 3`), and leaves the path in the **Cred file** field so you can
+always see which credentials are loaded. A file that turns out to be unusable
+reports why and the next press moves on.
+
+Recency means the later of a file's access and modification time, so the
+instance you just downloaded or the `.env` you just edited comes up first.
+Neither kind is preferred over the other — which is current is a matter of what
+you touched last, not what it is named. On `noatime`/`relatime` mounts, and on
+Windows, reads may not be recorded and the modification time is used.
 
 Precedence, highest first: command-line flags → credentials file → environment
 variables → defaults. So `--env-file creds.txt --database movies` uses the URI,

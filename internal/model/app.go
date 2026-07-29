@@ -158,7 +158,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			return a, a.statusbar.SetError(fmt.Sprintf("Credentials file: %s", msg.err))
 		}
-		a.statusbar.SetMessage(fmt.Sprintf("Loaded credentials from %s — Enter to connect", filepath.Base(msg.path)))
+		a.statusbar.SetMessage("Filled from " + credsSourceLabel(msg))
 		return a, nil
 
 	case queryResultMsg:
@@ -239,6 +239,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return a, nil
+}
+
+// credsSourceLabel names the file the connection fields were filled from, plus
+// its position when there is more than one candidate to cycle through.
+func credsSourceLabel(msg credsLoadedMsg) string {
+	name := filepath.Base(msg.path)
+	if msg.total > 1 {
+		return fmt.Sprintf("%s (%d of %d) — Ctrl+O for next, Enter to connect", name, msg.index, msg.total)
+	}
+	return name + " — Enter to connect"
 }
 
 func (a *App) resultHints() []StatusHint {

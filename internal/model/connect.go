@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -42,9 +43,13 @@ type ConnectModel struct {
 	width   int
 	height  int
 
-	// discovered is a credentials file found in the working directory,
-	// offered as the placeholder for the cred file field.
-	discovered string
+	// candidates are the credentials files found in the working directory,
+	// most recently used first.  Ctrl+O walks them in order.
+	candidates []string
+	nextCand   int
+	// filled is the path this model last put into the cred file field, used to
+	// tell "still showing what I offered" from "the user typed a path".
+	filled string
 }
 
 type connectSubmitMsg struct {
@@ -55,10 +60,13 @@ type connectSubmitMsg struct {
 }
 
 // credsLoadedMsg reports the outcome of loading a credentials file from the
-// connect screen. err is nil on success.
+// connect screen. err is nil on success.  When the load came from cycling
+// through discovered files, index/total say which one it was (1-based).
 type credsLoadedMsg struct {
-	path string
-	err  error
+	path  string
+	err   error
+	index int
+	total int
 }
 
 var errNoCredFile = errors.New("no credentials file given (.env or Neo4j-…-Created-….txt)")
@@ -104,7 +112,7 @@ func NewConnectModel(cfg *config.Config) ConnectModel {
 	m := ConnectModel{
 		inputs:     make([]textinput.Model, numConnectFields),
 		focused:    fieldURI,
-		discovered: config.DiscoverCredentialsFile("."),
+		candidates: config.DiscoverCredentialsFiles("."),
 	}
 	m.inputs[fieldCredFile] = credInput
 	m.inputs[fieldURI] = uriInput
@@ -112,8 +120,8 @@ func NewConnectModel(cfg *config.Config) ConnectModel {
 	m.inputs[fieldPassword] = passInput
 	m.inputs[fieldDatabase] = dbInput
 
-	if m.discovered != "" {
-		m.inputs[fieldCredFile].Placeholder = filepath.Base(m.discovered)
+	if len(m.candidates) > 0 {
+		m.inputs[fieldCredFile].Placeholder = filepath.Base(m.candidates[0])
 	} else {
 		m.inputs[fieldCredFile].Placeholder = "path to .env or Neo4j-…-Created-….txt"
 	}
@@ -141,7 +149,7 @@ func (m ConnectModel) Update(msg tea.Msg) (ConnectModel, tea.Cmd) {
 			return m, m.updateFocus()
 		case "enter":
 			// Enter on the cred file field loads it rather than advancing.
-			if m.focused == fieldCredFile && (m.inputs[fieldCredFile].Value() != "" || m.discovered != "") {
+			if m.focused == fieldCredFile && (m.inputs[fieldCredFile].Value() != "" || len(m.candidates) > 0) {
 				return m.loadCreds()
 			}
 			if m.focused < len(m.inputs)-1 {
@@ -175,28 +183,38 @@ func (m ConnectModel) submit() tea.Cmd {
 	}
 }
 
-// loadCreds reads the credentials file named in the cred file field — falling
-// back to the file discovered in the working directory — and fills in whatever
-// settings it provides.
+// loadCreds reads the credentials file named in the cred file field and fills
+// in whatever settings it provides.  When the field is empty — or still holds
+// the path this model offered last — it instead steps to the next discovered
+// file, so repeated Ctrl+O cycles through everything in the directory.
 func (m ConnectModel) loadCreds() (ConnectModel, tea.Cmd) {
-	path := strings.TrimSpace(m.inputs[fieldCredFile].Value())
-	if path == "" {
-		path = m.discovered
-	}
-	if path == "" {
-		return m, func() tea.Msg {
-			return credsLoadedMsg{err: errNoCredFile}
+	typed := strings.TrimSpace(m.inputs[fieldCredFile].Value())
+
+	path := typed
+	var index, total int
+	if typed == "" || typed == m.filled {
+		if len(m.candidates) == 0 {
+			return m, func() tea.Msg {
+				return credsLoadedMsg{err: errNoCredFile}
+			}
 		}
+		path = m.candidates[m.nextCand]
+		index, total = m.nextCand+1, len(m.candidates)
+		m.nextCand = (m.nextCand + 1) % len(m.candidates)
 	}
+
+	// Show which file was tried even when it turns out to be unusable, so a
+	// failure names its source and the next Ctrl+O moves on.
+	m.inputs[fieldCredFile].SetValue(path)
+	m.filled = path
 
 	creds, err := config.LoadCredentialsFile(path)
 	if err != nil {
 		return m, func() tea.Msg {
-			return credsLoadedMsg{path: path, err: err}
+			return credsLoadedMsg{path: path, err: err, index: index, total: total}
 		}
 	}
 
-	m.inputs[fieldCredFile].SetValue(path)
 	if creds.URI != "" {
 		m.inputs[fieldURI].SetValue(creds.URI)
 	}
@@ -215,7 +233,7 @@ func (m ConnectModel) loadCreds() (ConnectModel, tea.Cmd) {
 	focusCmd := m.updateFocus()
 
 	return m, tea.Batch(focusCmd, func() tea.Msg {
-		return credsLoadedMsg{path: path}
+		return credsLoadedMsg{path: path, index: index, total: total}
 	})
 }
 
@@ -263,10 +281,26 @@ func (m ConnectModel) View() string {
 	form := lipgloss.JoinVertical(lipgloss.Left, rows...)
 
 	title := connectTitleStyle.Render("Connect to Neo4j")
-	hint := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).MarginTop(1).
-		Render("Enter to connect • Tab to next field • Ctrl+O to load credentials file")
 
-	block := lipgloss.JoinVertical(lipgloss.Left, title, form, hint)
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	parts := []string{title, form}
+
+	switch n := len(m.candidates); {
+	case n == 1:
+		parts = append(parts, dimStyle.MarginTop(1).Render("1 credentials file here • Ctrl+O to load it"))
+	case n > 1:
+		parts = append(parts, dimStyle.MarginTop(1).Render(
+			fmt.Sprintf("%d credentials files here • Ctrl+O to cycle, most recently used first", n)))
+	}
+
+	hintTop := 1
+	if len(m.candidates) > 0 {
+		hintTop = 0
+	}
+	parts = append(parts, dimStyle.MarginTop(hintTop).
+		Render("Enter to connect • Tab to next field"))
+
+	block := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, block)
 }

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -97,7 +98,7 @@ func TestConnectCtrlOLoadsDiscoveredFile(t *testing.T) {
 	writeAuraFile(t, ".")
 
 	m := NewConnectModel(&config.Config{URI: "neo4j://localhost:7687", Username: "neo4j"})
-	if m.discovered == "" {
+	if len(m.candidates) == 0 {
 		t.Fatal("expected the Aura file to be discovered")
 	}
 
@@ -138,5 +139,126 @@ func TestConnectEnterOnEmptyCredFieldAdvances(t *testing.T) {
 	m, _ = m.Update(key("enter"))
 	if m.focused != fieldURI {
 		t.Errorf("focused = %d, want %d", m.focused, fieldURI)
+	}
+}
+
+// Repeated Ctrl+O walks every discovered file in recency order and wraps
+// around, reporting which one filled the fields each time.
+func TestConnectCtrlOCyclesThroughCandidates(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	base := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
+	files := []struct {
+		name     string
+		password string
+		age      time.Duration
+	}{
+		{"Neo4j-aaaa1111-Created-2026-07-28.txt", "newest", 0},
+		{".env", "middle", 24 * time.Hour},
+		{"Neo4j-zzzz9999-Created-2020-01-01.txt", "oldest", 72 * time.Hour},
+	}
+	for _, f := range files {
+		body := "NEO4J_URI=neo4j+s://x.databases.neo4j.io\nNEO4J_PASSWORD=" + f.password + "\n"
+		if err := os.WriteFile(f.name, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		when := base.Add(-f.age)
+		if err := os.Chtimes(f.name, when, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m := NewConnectModel(&config.Config{})
+	if len(m.candidates) != 3 {
+		t.Fatalf("discovered %d files, want 3: %v", len(m.candidates), m.candidates)
+	}
+
+	// Two full laps, to prove it wraps rather than sticking on the last file.
+	for lap := 0; lap < 2; lap++ {
+		for i, f := range files {
+			var cmd tea.Cmd
+			m, cmd = m.Update(key("ctrl+o"))
+			loaded := findMsg[credsLoadedMsg](t, cmd)
+
+			if loaded.err != nil {
+				t.Fatalf("lap %d step %d: %v", lap, i, loaded.err)
+			}
+			if filepath.Base(loaded.path) != f.name {
+				t.Errorf("lap %d step %d: loaded %s, want %s", lap, i, filepath.Base(loaded.path), f.name)
+			}
+			if loaded.index != i+1 || loaded.total != 3 {
+				t.Errorf("lap %d step %d: reported %d of %d, want %d of 3", lap, i, loaded.index, loaded.total, i+1)
+			}
+			if got := m.inputs[fieldPassword].Value(); got != f.password {
+				t.Errorf("lap %d step %d: password = %q, want %q", lap, i, got, f.password)
+			}
+			if got := m.inputs[fieldCredFile].Value(); filepath.Base(got) != f.name {
+				t.Errorf("lap %d step %d: cred field = %q, want it to name %s", lap, i, got, f.name)
+			}
+		}
+	}
+}
+
+// A path the user typed is honoured instead of resuming the cycle.
+func TestConnectTypedPathBeatsCycling(t *testing.T) {
+	t.Chdir(t.TempDir())
+	writeAuraFile(t, ".")
+	if err := os.WriteFile("chosen.env", []byte("NEO4J_PASSWORD=typed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m := NewConnectModel(&config.Config{})
+	m.inputs[fieldCredFile].SetValue("chosen.env")
+
+	m, cmd := m.Update(key("ctrl+o"))
+	loaded := findMsg[credsLoadedMsg](t, cmd)
+	if loaded.err != nil {
+		t.Fatalf("load error: %v", loaded.err)
+	}
+	if loaded.path != "chosen.env" {
+		t.Errorf("loaded %q, want the typed path", loaded.path)
+	}
+	if loaded.total != 0 {
+		t.Errorf("total = %d, want 0 for a typed path (no cycle position)", loaded.total)
+	}
+	if got := m.inputs[fieldPassword].Value(); got != "typed" {
+		t.Errorf("password = %q", got)
+	}
+}
+
+// An unusable file names itself in the error and does not stall the cycle.
+func TestConnectCyclePastUnusableFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+
+	base := time.Date(2026, 7, 28, 12, 0, 0, 0, time.UTC)
+	if err := os.WriteFile("broken.env", []byte("# nothing useful here\nFOO=bar\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("good.env", []byte("NEO4J_PASSWORD=works\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	os.Chtimes("broken.env", base, base)
+	os.Chtimes("good.env", base.Add(-time.Hour), base.Add(-time.Hour))
+
+	m := NewConnectModel(&config.Config{})
+
+	m, cmd := m.Update(key("ctrl+o"))
+	first := findMsg[credsLoadedMsg](t, cmd)
+	if first.err == nil {
+		t.Fatal("expected the file with no NEO4J_* settings to fail")
+	}
+	if filepath.Base(first.path) != "broken.env" {
+		t.Errorf("failure names %q, want broken.env", first.path)
+	}
+
+	m, cmd = m.Update(key("ctrl+o"))
+	second := findMsg[credsLoadedMsg](t, cmd)
+	if second.err != nil {
+		t.Fatalf("cycle stalled on the bad file: %v", second.err)
+	}
+	if got := m.inputs[fieldPassword].Value(); got != "works" {
+		t.Errorf("password = %q, want the next file to load", got)
 	}
 }

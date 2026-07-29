@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Credentials holds the connection settings read from a credentials file.
@@ -106,38 +107,72 @@ func unquote(s string) string {
 	return s
 }
 
+// credFilePatterns are the globs searched for credentials files. `*.env` also
+// matches a bare `.env`, but the explicit pattern is kept so the common case
+// still works if a platform's Glob ever skips dotfiles.
+var credFilePatterns = []string{
+	"Neo4j-*-Created-*.txt", // downloaded from Aura on instance creation
+	"*.env",
+	".env",
+}
+
 // DiscoverCredentialsFiles lists candidate credentials files in dir, most
-// promising first: Aura's downloaded `Neo4j-*-Created-*.txt` files (newest
-// name first), then `.env`, then any other `*.env`.
+// recently used first, so the file you last downloaded or edited comes up
+// before older ones.  Aura `.txt` downloads and `.env` files compete purely on
+// recency — neither kind is inherently preferred, since which one is current
+// is a matter of what you touched last, not what it is named.  Ties break on
+// path so the order is stable.
 func DiscoverCredentialsFiles(dir string) []string {
 	if dir == "" {
 		dir = "."
 	}
 
-	aura, _ := filepath.Glob(filepath.Join(dir, "Neo4j-*-Created-*.txt"))
-	sort.Sort(sort.Reverse(sort.StringSlice(aura)))
-
-	// `*.env` also matches a bare `.env`, so dedupe while preserving priority.
-	others, _ := filepath.Glob(filepath.Join(dir, "*.env"))
-	sort.Strings(others)
-
-	candidates := append([]string{}, aura...)
-	candidates = append(candidates, filepath.Join(dir, ".env"))
-	candidates = append(candidates, others...)
-
-	var found []string
-	seen := make(map[string]bool)
-	for _, path := range candidates {
-		if seen[path] {
-			continue
-		}
-		seen[path] = true
-		if fi, err := os.Stat(path); err != nil || fi.IsDir() {
-			continue
-		}
-		found = append(found, path)
+	type candidate struct {
+		path string
+		used time.Time
 	}
-	return found
+
+	var found []candidate
+	seen := make(map[string]bool)
+	for _, pattern := range credFilePatterns {
+		matches, _ := filepath.Glob(filepath.Join(dir, pattern))
+		for _, path := range matches {
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+			fi, err := os.Stat(path)
+			if err != nil || fi.IsDir() {
+				continue
+			}
+			found = append(found, candidate{path: path, used: lastUsed(fi)})
+		}
+	}
+
+	sort.SliceStable(found, func(i, j int) bool {
+		if !found[i].used.Equal(found[j].used) {
+			return found[i].used.After(found[j].used)
+		}
+		return found[i].path < found[j].path
+	})
+
+	paths := make([]string, len(found))
+	for i, c := range found {
+		paths[i] = c.path
+	}
+	return paths
+}
+
+// lastUsed reports when a file was last read or written, whichever is later.
+// Access time is used where the platform exposes it; mounts with `noatime` or
+// `relatime` may not record reads, and Windows is not supported at all, so the
+// modification time is the floor.
+func lastUsed(fi os.FileInfo) time.Time {
+	modified := fi.ModTime()
+	if accessed, ok := accessTime(fi); ok && accessed.After(modified) {
+		return accessed
+	}
+	return modified
 }
 
 // DiscoverCredentialsFile returns the single best candidate in dir, or "".
