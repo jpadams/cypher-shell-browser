@@ -633,3 +633,226 @@ func TestGraphViewLineMoveResetsDetailPosition(t *testing.T) {
 		t.Errorf("detailScroll = %d after moving to another line, want 0", m.detailScroll)
 	}
 }
+
+// paneHasContent reports whether the left pane renders any of the tree, rather
+// than an empty window scrolled past the end of the content.
+func paneHasContent(m GraphViewModel) bool {
+	for _, line := range strings.Split(m.renderCypherPane(), "\n") {
+		if strings.Contains(stripAnsi(line), "(:") {
+			return true
+		}
+	}
+	return false
+}
+
+// Collapsing 269 rows into a 6-line tree while scrolled deep into the list used
+// to leave the pane blank: scrollY stayed put while the content shrank beneath
+// it. Short content must always show from the top.
+func TestGraphViewTreeResetsScrollWhenContentShrinks(t *testing.T) {
+	m := NewGraphViewModel()
+	m.SetSize(96, 20)
+	m.rowPaths = videoRows()
+	m.ready = true
+	m.renderContent()
+
+	// Scroll deep into the row list.
+	for i := 0; i < 200; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	if m.scrollY == 0 {
+		t.Fatal("expected the rows view to have scrolled")
+	}
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+
+	if len(m.lines) > m.visibleHeight() {
+		t.Fatalf("tree is %d lines against a %d-line viewport; fixture no longer exercises the bug",
+			len(m.lines), m.visibleHeight())
+	}
+	if m.scrollY != 0 {
+		t.Errorf("scrollY = %d after collapsing, want 0 so the tree starts at the top", m.scrollY)
+	}
+	if !paneHasContent(m) {
+		t.Error("left pane rendered no tree content — scrolled past the end")
+	}
+	if !m.isDataLine(m.cursor) {
+		t.Errorf("cursor %d is not on a data line", m.cursor)
+	}
+}
+
+// Going back to the long list must not leave the offset past the end either, and
+// the cursor must stay in view.
+func TestGraphViewRowsViewScrollStaysValid(t *testing.T) {
+	m := NewGraphViewModel()
+	m.SetSize(96, 20)
+	m.rowPaths = videoRows()
+	m.ready = true
+	m.tree = true
+	m.renderContent()
+
+	m.cursor = 5
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+
+	if max := len(m.lines) - m.visibleHeight(); m.scrollY > max {
+		t.Errorf("scrollY = %d, want at most %d", m.scrollY, max)
+	}
+	if m.cursor < m.scrollY || m.cursor >= m.scrollY+m.visibleHeight() {
+		t.Errorf("cursor %d outside the window [%d, %d)", m.cursor, m.scrollY, m.scrollY+m.visibleHeight())
+	}
+	if !paneHasContent(m) {
+		t.Error("left pane rendered no content")
+	}
+}
+
+// Shrinking the pane must not scroll the content off screen.
+func TestGraphViewShrinkKeepsContentOnScreen(t *testing.T) {
+	m := NewGraphViewModel()
+	m.SetSize(96, 20)
+	m.rowPaths = videoRows()
+	m.ready = true
+	m.renderContent()
+
+	for i := 0; i < 200; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+
+	for _, h := range []int{20, 12, 8, 6} {
+		m.SetSize(96, h)
+		if max := len(m.lines) - m.visibleHeight(); m.visibleHeight() >= 1 && m.scrollY > max {
+			t.Errorf("height %d: scrollY = %d, want at most %d", h, m.scrollY, max)
+		}
+		if !paneHasContent(m) {
+			t.Errorf("height %d: left pane rendered no content", h)
+		}
+	}
+}
+
+// Toggling to the tree and back returns you to where you were in the long list.
+func TestGraphViewTreeToggleRestoresRowsPosition(t *testing.T) {
+	m := NewGraphViewModel()
+	m.SetSize(96, 20)
+	m.rowPaths = videoRows()
+	m.ready = true
+	m.renderContent()
+
+	for i := 0; i < 200; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	wantCursor, wantScroll := m.cursor, m.scrollY
+	if wantScroll == 0 {
+		t.Fatal("expected the rows view to have scrolled")
+	}
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	if m.scrollY != 0 {
+		t.Fatalf("tree should start at the top, scrollY = %d", m.scrollY)
+	}
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	if m.cursor != wantCursor {
+		t.Errorf("cursor = %d, want %d restored", m.cursor, wantCursor)
+	}
+	if m.scrollY != wantScroll {
+		t.Errorf("scrollY = %d, want %d restored", m.scrollY, wantScroll)
+	}
+	if !paneHasContent(m) {
+		t.Error("left pane rendered no content after returning to the rows view")
+	}
+}
+
+// The tree's own position is remembered too.
+func TestGraphViewTreeToggleRestoresTreePosition(t *testing.T) {
+	m := NewGraphViewModel()
+	m.SetSize(96, 20)
+	m.rowPaths = videoRows()
+	m.ready = true
+	m.renderContent()
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	for i := 0; i < 3; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	wantCursor := m.cursor
+	if wantCursor == 0 {
+		t.Fatal("expected the tree cursor to have moved")
+	}
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")}) // to rows
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")}) // back to tree
+	if m.cursor != wantCursor {
+		t.Errorf("tree cursor = %d, want %d restored", m.cursor, wantCursor)
+	}
+}
+
+// Re-running a query starts over at the top: a position held against the previous
+// result must not be restored against new rows.
+func TestGraphViewNewResultResetsRememberedPositions(t *testing.T) {
+	rows := videoRows()
+	result := &n4j.QueryResult{
+		Columns:  []string{"p"},
+		Nodes:    []n4j.ResultNode{{ID: 1, Labels: []string{"Video"}}},
+		RowPaths: rows,
+	}
+
+	m := NewGraphViewModel()
+	m.SetSize(96, 20)
+	m.SetResult(result)
+
+	for i := 0; i < 200; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+
+	// Same query run again.
+	m.SetResult(result)
+	if m.cursor != 0 || m.scrollY != 0 {
+		t.Errorf("cursor = %d, scrollY = %d after a new result, want 0, 0", m.cursor, m.scrollY)
+	}
+	if m.rowsPos.valid || m.treePos.valid {
+		t.Error("remembered positions survived a new result")
+	}
+
+	// Toggling now must not resurrect the old position.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	if m.scrollY != 0 {
+		t.Errorf("scrollY = %d after toggling on a fresh result, want 0", m.scrollY)
+	}
+	if !paneHasContent(m) {
+		t.Error("left pane rendered no content")
+	}
+}
+
+// The detail panel follows the restored cursor rather than showing the row from
+// before the toggle.
+func TestGraphViewTreeToggleRefreshesDetail(t *testing.T) {
+	m := NewGraphViewModel()
+	m.SetSize(96, 20)
+	m.rowPaths = videoRows()
+	m.ready = true
+	m.renderContent()
+
+	for i := 0; i < 200; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	m.showDetail = true
+	m.detailWidth = m.detailPaneWidth()
+	m.updateDetail()
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+
+	// In the tree the cursor sits on some shape line; the detail panel must
+	// describe that line's row, not the row we left behind.
+	wantRow := m.currentRow()
+	if wantRow < 0 {
+		t.Fatal("no current row in the tree view")
+	}
+	var headers int
+	for _, e := range m.entries {
+		if e.isHeader {
+			headers++
+		}
+	}
+	if headers != len(m.rowPaths[wantRow]) {
+		t.Errorf("detail has %d headers, want %d for row %d", headers, len(m.rowPaths[wantRow]), wantRow)
+	}
+}

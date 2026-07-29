@@ -23,20 +23,36 @@ func key(s string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
 
-// collect flattens a command (including tea.Batch trees) into its messages.
+// collectDeadline bounds how long a single command may take to produce its
+// message. Focusing an input returns bubbles' cursor-blink command, which is a
+// tea.Tick that would otherwise block for its whole blink interval — several
+// hundred milliseconds per keypress. The messages these tests assert on are
+// plain closures that return immediately.
+const collectDeadline = 50 * time.Millisecond
+
+// collect flattens a command (including tea.Batch trees) into its messages,
+// skipping any command that does not deliver within collectDeadline.
 func collect(cmd tea.Cmd) []tea.Msg {
 	if cmd == nil {
 		return nil
 	}
-	msg := cmd()
-	if batch, ok := msg.(tea.BatchMsg); ok {
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+
+	select {
+	case msg := <-done:
+		batch, ok := msg.(tea.BatchMsg)
+		if !ok {
+			return []tea.Msg{msg}
+		}
 		var out []tea.Msg
 		for _, c := range batch {
 			out = append(out, collect(c)...)
 		}
 		return out
+	case <-time.After(collectDeadline):
+		return nil // a timer command; carries nothing these tests need
 	}
-	return []tea.Msg{msg}
 }
 
 // findMsg returns the first message of type T produced by cmd.

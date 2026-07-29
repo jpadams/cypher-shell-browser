@@ -70,6 +70,13 @@ var (
 // Cypher lines from.
 const noGraphDataMessage = "No graph data to display"
 
+// viewPos is a remembered scroll position in the left pane.
+type viewPos struct {
+	valid  bool
+	cursor int
+	scroll int
+}
+
 // graphDetailEntry is a single navigable item in the detail panel.
 type graphDetailEntry struct {
 	isHeader   bool
@@ -100,6 +107,12 @@ type GraphViewModel struct {
 	lineRows [][]int
 	variant  int
 
+	// Remembered position of each view, so toggling between them returns you to
+	// where you were instead of the top.  Cleared by SetResult: a position from
+	// the previous result means nothing against new rows.
+	rowsPos viewPos
+	treePos viewPos
+
 	// Detail panel
 	showDetail   bool
 	detailFocus  bool
@@ -126,6 +139,9 @@ func (m *GraphViewModel) SetSize(w, h int) {
 	}
 	m.width = w
 	m.height = h
+	// A shorter pane can leave the old offset past the end of the content.
+	m.clampScroll()
+	m.ensureCursorVisible()
 }
 
 func (m *GraphViewModel) SetResult(result *n4j.QueryResult) {
@@ -134,6 +150,11 @@ func (m *GraphViewModel) SetResult(result *n4j.QueryResult) {
 	m.scrollX = 0
 	m.cursor = 0
 	m.scrollY = 0
+	// A fresh result starts at the top, and positions remembered against the
+	// previous one no longer mean anything.
+	m.rowsPos = viewPos{}
+	m.treePos = viewPos{}
+	m.variant = 0
 	m.showDetail = false
 	m.detailFocus = false
 	m.propCursor = -1
@@ -220,6 +241,61 @@ func (m *GraphViewModel) renderContent() {
 
 	// Clamp cursor to a valid data line
 	m.clampCursor()
+	// Switching views changes the line count wholesale — a scroll offset from
+	// the previous view means nothing here, so bring the content back on screen.
+	m.clampScroll()
+	m.ensureCursorVisible()
+}
+
+// toggleTree switches between the row list and the shape tree, restoring the
+// position you last held in the view being entered.  Without this, collapsing
+// and expanding again would dump you back at the top of a long result.
+func (m *GraphViewModel) toggleTree() {
+	here := viewPos{valid: true, cursor: m.cursor, scroll: m.scrollY}
+	var there viewPos
+	if m.tree {
+		m.treePos, there = here, m.rowsPos
+	} else {
+		m.rowsPos, there = here, m.treePos
+	}
+
+	m.tree = !m.tree
+	// The MERGE/CREATE prefix belongs to copyable per-row Cypher, not to a
+	// shape summary.
+	if m.tree {
+		m.cypherPrefix = ""
+	}
+	m.scrollX = 0
+	m.renderContent()
+
+	if there.valid {
+		m.cursor = there.cursor
+		m.scrollY = there.scroll
+		// Re-clamp: the result may have fewer lines than when we left.
+		m.clampCursor()
+		m.clampScroll()
+		m.ensureCursorVisible()
+	}
+	if m.showDetail {
+		m.updateDetail()
+	}
+}
+
+// clampScroll keeps the rendered content on screen. Content that fits the
+// viewport always starts at the top; taller content is bounded so the last line
+// can be reached but not scrolled past.
+func (m *GraphViewModel) clampScroll() {
+	vis := m.visibleHeight()
+	if vis < 1 || len(m.lines) <= vis {
+		m.scrollY = 0
+		return
+	}
+	if max := len(m.lines) - vis; m.scrollY > max {
+		m.scrollY = max
+	}
+	if m.scrollY < 0 {
+		m.scrollY = 0
+	}
 }
 
 func (m *GraphViewModel) HasGraph() bool {
@@ -432,14 +508,7 @@ func (m GraphViewModel) Update(msg tea.Msg) (GraphViewModel, tea.Cmd) {
 
 		case "t":
 			if !m.detailFocus {
-				m.tree = !m.tree
-				// The MERGE/CREATE prefix belongs to copyable per-row Cypher,
-				// not to a shape summary.
-				if m.tree {
-					m.cypherPrefix = ""
-				}
-				m.scrollX = 0
-				m.renderContent()
+				m.toggleTree()
 				return m, nil
 			}
 
